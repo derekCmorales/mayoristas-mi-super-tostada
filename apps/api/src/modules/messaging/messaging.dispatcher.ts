@@ -144,6 +144,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       facturas: cuenta.facturas,
     });
     const upload = await this.wa.uploadDocument({
+      organizacionId: cli.organizacionId,
       bytes: pdf,
       mime: "application/pdf",
       filename: `estado-cuenta.pdf`,
@@ -198,6 +199,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       generadoAt: instanteAIso(hoja.generadoAt),
     });
     const upload = await this.wa.uploadDocument({
+      organizacionId: orgId,
       bytes: pdf,
       mime: "application/pdf",
       filename: `hoja-${row.fechaOperacion}.pdf`,
@@ -242,6 +244,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       input.params,
     );
     const sent = await this.wa.sendTemplate({
+      organizacionId: input.orgId,
       to: input.to,
       name: tpl.name,
       language: tpl.language,

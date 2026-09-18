@@ -29,7 +29,11 @@ export class FakeWhatsAppAdapter implements WhatsAppPort {
     this.uploads.length = 0;
   }
 
-  async sendText(input: { to: string; body: string }): Promise<WhatsAppSendResult> {
+  async sendText(input: {
+    organizacionId: string;
+    to: string;
+    body: string;
+  }): Promise<WhatsAppSendResult> {
     const waMessageId = `wamid.fake.${crypto.randomUUID()}`;
     this.envios.push({
       kind: "text",
@@ -56,6 +60,7 @@ export class FakeWhatsAppAdapter implements WhatsAppPort {
   }
 
   async uploadDocument(input: {
+    organizacionId: string;
     bytes: Buffer;
     mime: string;
     filename: string;

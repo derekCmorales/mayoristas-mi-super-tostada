@@ -6,9 +6,14 @@ import { CLOCK, DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
 import { OutboxDispatcherRegistry } from "../shared/outbox.dispatcher";
 import { PgBossService } from "../shared/pgboss.service";
+import { EncryptionService } from "../shared/crypto";
 import { WHATSAPP_PORT } from "./whatsapp.port";
 import { FakeWhatsAppAdapter } from "./fake.whatsapp";
-import { GraphWhatsAppAdapter } from "./graph.whatsapp";
+import {
+  GraphWhatsAppAdapter,
+  resolverAuthWabaDesdeDb,
+} from "./graph.whatsapp";
+import { elegirPuertoWhatsApp } from "./elegir-puerto-whatsapp";
 import { WebhookService } from "./webhook.service";
 import { WebhooksController } from "./webhooks.controller";
 import { PlantillaService } from "./plantilla.service";
@@ -24,11 +29,24 @@ export const COLA_INVITACION = "mensajeria.invitacion";
   controllers: [WebhooksController, ConversacionesController],
   providers: [
     FakeWhatsAppAdapter,
-    GraphWhatsAppAdapter,
     {
       provide: WHATSAPP_PORT,
-      inject: [FakeWhatsAppAdapter],
-      useFactory: (fake: FakeWhatsAppAdapter) => fake,
+      inject: [FakeWhatsAppAdapter, DRIZZLE, EncryptionService],
+      useFactory: (
+        fake: FakeWhatsAppAdapter,
+        db: AppDatabase,
+        crypto: EncryptionService,
+      ) => {
+        const env = loadEnv();
+        return elegirPuertoWhatsApp(
+          env,
+          fake,
+          new GraphWhatsAppAdapter(
+            env.META_GRAPH_VERSION,
+            resolverAuthWabaDesdeDb(db, crypto),
+          ),
+        );
+      },
     },
     WebhookService,
     PlantillaService,
