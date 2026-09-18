@@ -1,12 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
-  abono,
   auditLog,
   cliente,
   clienteProducto,
   factura,
-  pago,
   pedido,
   pedidoItem,
   producto,
@@ -32,12 +30,14 @@ import {
   type PedidoSseEvent,
   type PortalPedido,
   capturaAbierta,
-  estadoFactura,
   type BusinessCalendar,
 } from "@misupertostada/shared";
 import { DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
-import { antiguedadDiasDe } from "../receivables/factura-presentacion";
+import {
+  abonosAplicadosDeFactura,
+  presentarFactura,
+} from "../receivables/factura-presentacion";
 import { AuditWriter } from "../shared/audit.writer";
 import { OutboxWriter } from "../shared/outbox.writer";
 import {
@@ -859,46 +859,26 @@ export class PedidoService {
       .limit(1);
     if (!fac) return null;
 
-    // `pago` es la aplicación; método/estado viven en el `abono` que la originó.
-    const pagos = await this.db
-      .select({ pago, abono })
-      .from(pago)
-      .innerJoin(abono, eq(abono.id, pago.abonoId))
-      .where(eq(pago.facturaId, fac.factura.id))
-      .orderBy(asc(pago.fecha));
-    const abonado = pagos.reduce((acc, p) => acc + p.pago.montoCentavos, 0);
-    const saldo = Math.max(0, fac.factura.montoCentavos - abonado);
-    const cal = await this.calendar.load(organizacionId);
-    const now = this.calendar.now();
-    const emitida = fac.factura.emitidaAt ?? fac.factura.createdAt;
-    const antiguedadDias = antiguedadDiasDe(cal, emitida, now);
-    const estado = estadoFactura({
-      montoCentavos: fac.factura.montoCentavos,
-      abonadoCentavos: abonado,
-      antiguedadDias,
-    });
+    const [facturaInfo, abonos] = await Promise.all([
+      presentarFactura(this.db, this.calendar, fac.factura),
+      abonosAplicadosDeFactura(this.db, fac.factura.id),
+    ]);
 
     return {
-      id: fac.factura.id,
-      numeroDte: fac.factura.numeroDte ?? null,
-      montoCentavos: fac.factura.montoCentavos,
-      abonadoCentavos: abonado,
-      saldoCentavos: saldo,
-      antiguedadDias,
-      estado,
-      abonos: pagos.map((p) => ({
-        abonoId: p.abono.id,
-        fecha: p.pago.fecha,
-        metodo: p.pago.metodo,
-        estado: p.abono.estado,
-        montoCentavos: p.pago.montoCentavos,
+      ...facturaInfo,
+      abonos: abonos.map((a) => ({
+        abonoId: a.abonoId,
+        fecha: a.fecha,
+        metodo: a.metodo,
+        estado: a.estado,
+        montoCentavos: a.montoCentavos,
       })),
-      pagos: pagos.map((p) => ({
-        id: p.pago.id,
-        montoCentavos: p.pago.montoCentavos,
-        metodo: p.pago.metodo,
-        fecha: p.pago.fecha,
-        comprobanteAssetId: p.pago.comprobanteAssetId ?? null,
+      pagos: abonos.map((a) => ({
+        id: a.pagoId,
+        montoCentavos: a.montoCentavos,
+        metodo: a.metodo,
+        fecha: a.fecha,
+        comprobanteAssetId: a.comprobanteAssetId,
       })),
     };
   }

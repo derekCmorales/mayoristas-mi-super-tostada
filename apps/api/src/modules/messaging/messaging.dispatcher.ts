@@ -1,13 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   auditLog,
   cliente,
   conexionWaba,
-  factura,
   hojaProduccion,
   mensaje,
-  pago,
   pedido,
   pedidoItem,
 } from "@misupertostada/db";
@@ -16,7 +14,6 @@ import {
   TIPO_OUTBOX_INVITACION,
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
   TIPO_OUTBOX_RECORDATORIO,
-  estadoFactura,
   extraerCuerpoPlantilla,
   hojaSnapshotSchema,
   instanteAIso,
@@ -40,7 +37,7 @@ import { BusinessCalendarService } from "../shared/calendar.service";
 import { WHATSAPP_PORT, type WhatsAppPort } from "./whatsapp.port";
 import { PlantillaService } from "./plantilla.service";
 import { WebhookService } from "./webhook.service";
-import { antiguedadDiasDe } from "../receivables/factura-presentacion";
+import { facturasPendientesDeCliente } from "../receivables/factura-presentacion";
 
 const TIPOS = [
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
@@ -312,46 +309,6 @@ export class MessagingDispatcher implements OutboxDispatcher {
   }
 
   private async cuentaPendiente(clienteId: string) {
-    const filas = await this.db
-      .select()
-      .from(factura)
-      .innerJoin(pedido, eq(pedido.id, factura.pedidoId))
-      .where(eq(pedido.clienteId, clienteId));
-    const ids = filas.map((f) => f.factura.id);
-    const pagos = ids.length
-      ? await this.db.select().from(pago).where(inArray(pago.facturaId, ids))
-      : [];
-    const abonoPor = new Map<string, number>();
-    for (const p of pagos) {
-      abonoPor.set(p.facturaId, (abonoPor.get(p.facturaId) ?? 0) + p.montoCentavos);
-    }
-    const cal = await this.calendar.load();
-    const now = this.clock.now();
-    const facturas = [];
-    for (const fila of filas) {
-      const fac = fila.factura;
-      const abonado = abonoPor.get(fac.id) ?? 0;
-      const emitida = fac.emitidaAt ?? fac.createdAt;
-      const antiguedadDias = antiguedadDiasDe(cal, emitida, now);
-      const estado = estadoFactura({
-        montoCentavos: fac.montoCentavos,
-        abonadoCentavos: abonado,
-        antiguedadDias,
-      });
-      if (estado === "PAGADO") continue;
-      facturas.push({
-        numeroDte: fac.numeroDte,
-        montoCentavos: fac.montoCentavos,
-        abonadoCentavos: abonado,
-        saldoCentavos: fac.montoCentavos - abonado,
-        estado,
-        antiguedadDias,
-      });
-    }
-    return {
-      facturasPendientes: facturas.length,
-      saldoCentavos: facturas.reduce((acc, f) => acc + f.saldoCentavos, 0),
-      facturas,
-    };
+    return facturasPendientesDeCliente(this.db, this.calendar, clienteId);
   }
 }

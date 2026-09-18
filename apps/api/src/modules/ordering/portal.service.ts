@@ -47,6 +47,10 @@ import { PedidoService, type PortalMeta } from "./pedido.service";
 import { horarioDe } from "./pedido-reglas";
 import type { ClientePortal } from "./portal-token.service";
 import { ABONO_PORTAL, type AbonoPortal } from "../receivables/abono-portal";
+import {
+  abonosAplicadosDeFactura,
+  presentarFactura,
+} from "../receivables/factura-presentacion";
 
 const HISTORIAL_DEFAULT = 20;
 
@@ -494,40 +498,19 @@ export class PortalService {
       .limit(1);
     if (!fac) return null;
 
-    // Se une con `abono` para poder decir con qué se pagó: la fila de `pago`
-    // es la aplicación, el método y el estado viven en el abono que la originó.
-    const pagos = await this.db
-      .select({ pago, abono })
-      .from(pago)
-      .innerJoin(abono, eq(abono.id, pago.abonoId))
-      .where(eq(pago.facturaId, fac.id))
-      .orderBy(asc(pago.fecha));
-    const abonado = pagos.reduce((acc, p) => acc + p.pago.montoCentavos, 0);
-    const saldo = Math.max(0, fac.montoCentavos - abonado);
-    const cal = await this.calendar.load();
-    const now = this.calendar.now();
-    const emitida = fac.emitidaAt ?? fac.createdAt;
-    const antiguedadDias = emitida ? cal.diasCalendarioEntre(emitida, now) : 0;
-    const estado = estadoFactura({
-      montoCentavos: fac.montoCentavos,
-      abonadoCentavos: abonado,
-      antiguedadDias,
-    });
+    const [facturaInfo, abonos] = await Promise.all([
+      presentarFactura(this.db, this.calendar, fac),
+      abonosAplicadosDeFactura(this.db, fac.id),
+    ]);
 
     return {
-      id: fac.id,
-      numeroDte: fac.numeroDte ?? null,
-      montoCentavos: fac.montoCentavos,
-      abonadoCentavos: abonado,
-      saldoCentavos: saldo,
-      antiguedadDias,
-      estado,
-      abonos: pagos.map((p) => ({
-        abonoId: p.abono.id,
-        fecha: p.pago.fecha,
-        metodo: p.pago.metodo,
-        estado: p.abono.estado,
-        montoCentavos: p.pago.montoCentavos,
+      ...facturaInfo,
+      abonos: abonos.map((a) => ({
+        abonoId: a.abonoId,
+        fecha: a.fecha,
+        metodo: a.metodo,
+        estado: a.estado,
+        montoCentavos: a.montoCentavos,
       })),
     };
   }

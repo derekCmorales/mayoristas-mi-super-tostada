@@ -37,6 +37,7 @@ import {
   FACTURA_AL_ENTREGAR,
   type FacturaAlEntregar,
 } from "../receivables/factura-al-entregar";
+import { pendientesDeCliente } from "../receivables/factura-presentacion";
 
 @Injectable()
 export class EntregaService {
@@ -413,24 +414,11 @@ export class EntregaService {
     clienteId: string,
     excluirFacturaId?: string,
   ): Promise<{ saldo: number; count: number }> {
-    const abonadoSql = sql<number>`coalesce((
-      select sum(${pago.montoCentavos}) from ${pago} where ${pago.facturaId} = ${factura.id}
-    ), 0)::int`;
-    const condiciones = [
-      eq(pedido.clienteId, clienteId),
-      sql`${factura.montoCentavos} > ${abonadoSql}`,
-    ];
-    if (excluirFacturaId) {
-      condiciones.push(sql`${factura.id} <> ${excluirFacturaId}`);
-    }
-    const [row] = await this.db
-      .select({
-        saldo: sql<number>`coalesce(sum(${factura.montoCentavos} - ${abonadoSql}), 0)::int`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(factura)
-      .innerJoin(pedido, eq(pedido.id, factura.pedidoId))
-      .where(and(...condiciones));
-    return { saldo: Number(row?.saldo ?? 0), count: Number(row?.count ?? 0) };
+    const { saldoCentavos, count } = await pendientesDeCliente(
+      this.db,
+      clienteId,
+      excluirFacturaId,
+    );
+    return { saldo: saldoCentavos, count };
   }
 }
