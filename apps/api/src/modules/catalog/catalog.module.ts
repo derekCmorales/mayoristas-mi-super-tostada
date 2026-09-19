@@ -7,12 +7,15 @@ import { ClienteProductoService } from "./cliente-producto.service";
 import { ClienteBonoService } from "./cliente-bono.service";
 import { ImportService } from "./import.service";
 import { ImportController } from "./import.controller";
+import { CLIENTE_CREADOR, CLIENTE_PROPIETARIO } from "./cliente-ports";
 
 @Module({
   controllers: [ProductosController, ClientesController, ImportController],
   providers: [
     ProductosService,
     ClientesService,
+    { provide: CLIENTE_PROPIETARIO, useExisting: ClientesService },
+    { provide: CLIENTE_CREADOR, useExisting: ClientesService },
     ClienteProductoService,
     ClienteBonoService,
     ImportService,

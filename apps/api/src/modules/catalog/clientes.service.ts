@@ -17,9 +17,10 @@ import type { Actor } from "../identity/actor";
 import { esViolacionUnica, normalizarHorario } from "./catalog.util";
 import { hashPortalToken } from "../shared/portal-token";
 import { EncryptionService } from "../shared/crypto";
+import type { ClienteCreador, ClientePropietario } from "./cliente-ports";
 
 @Injectable()
-export class ClientesService {
+export class ClientesService implements ClientePropietario, ClienteCreador {
   constructor(
     @Inject(DRIZZLE) private readonly db: AppDatabase,
     private readonly audit: AuditWriter,

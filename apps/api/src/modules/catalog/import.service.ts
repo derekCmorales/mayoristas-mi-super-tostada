@@ -18,8 +18,8 @@ import { DomainException } from "../shared/domain.exception";
 import { parseBody } from "../shared/zod-body";
 import type { Actor } from "../identity/actor";
 import { ProductosService } from "./productos.service";
-import { ClientesService } from "./clientes.service";
 import { ClienteProductoService } from "./cliente-producto.service";
+import { CLIENTE_CREADOR, type ClienteCreador } from "./cliente-ports";
 
 @Injectable()
 export class ImportService {
@@ -27,7 +27,7 @@ export class ImportService {
     @Inject(DRIZZLE) private readonly db: AppDatabase,
     private readonly audit: AuditWriter,
     private readonly productos: ProductosService,
-    private readonly clientes: ClientesService,
+    @Inject(CLIENTE_CREADOR) private readonly clientes: ClienteCreador,
     private readonly clienteProductoSvc: ClienteProductoService,
   ) {}
 

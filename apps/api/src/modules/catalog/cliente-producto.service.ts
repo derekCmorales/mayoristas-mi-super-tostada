@@ -15,14 +15,14 @@ import { PedidoEvents } from "../shared/panel-events";
 import { DomainException } from "../shared/domain.exception";
 import { parseBody } from "../shared/zod-body";
 import type { Actor } from "../identity/actor";
-import { ClientesService } from "./clientes.service";
+import { CLIENTE_PROPIETARIO, type ClientePropietario } from "./cliente-ports";
 
 @Injectable()
 export class ClienteProductoService {
   constructor(
     @Inject(DRIZZLE) private readonly db: AppDatabase,
     private readonly audit: AuditWriter,
-    private readonly clientes: ClientesService,
+    @Inject(CLIENTE_PROPIETARIO) private readonly clientes: ClientePropietario,
     private readonly events: PedidoEvents,
   ) {}
 
