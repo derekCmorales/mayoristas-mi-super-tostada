@@ -12,6 +12,8 @@ import { IMPORT_HANDLERS } from "./import-tokens";
 import { ProductosImportHandler } from "./productos-import.handler";
 import { ClientesImportHandler } from "./clientes-import.handler";
 import { ClienteProductoImportHandler } from "./cliente-producto-import.handler";
+import { CatalogoPortalService } from "./catalogo-portal.service";
+import { CATALOGO_PORTAL } from "./catalogo-portal";
 
 @Module({
   controllers: [ProductosController, ClientesController, ImportController],
@@ -39,7 +41,9 @@ import { ClienteProductoImportHandler } from "./cliente-producto-import.handler"
       ],
     },
     ImportService,
+    CatalogoPortalService,
+    { provide: CATALOGO_PORTAL, useExisting: CatalogoPortalService },
   ],
-  exports: [ClienteBonoService],
+  exports: [ClienteBonoService, CATALOGO_PORTAL],
 })
 export class CatalogModule {}

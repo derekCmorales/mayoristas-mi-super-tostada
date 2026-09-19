@@ -37,7 +37,7 @@ import { ClientesService } from "../catalog/clientes.service";
 import { ClienteProductoService } from "../catalog/cliente-producto.service";
 import { ClienteBonoService } from "../catalog/cliente-bono.service";
 import { PedidoService } from "../ordering/pedido.service";
-import { PortalService } from "../ordering/portal.service";
+import { crearPortalService } from "../../test/portal-fixture";
 import { CierreService } from "../fulfillment/cierre.service";
 import { HojaService } from "../fulfillment/hoja.service";
 import { EntregaService } from "../fulfillment/entrega.service";
@@ -120,7 +120,14 @@ async function fixture(clock: Clock) {
   const cartera = new CarteraService(db, calendar);
   const storage = new FakeStorageAdapter();
   const assets = new AssetsService(db, storage, new AssetVariantsJob(db, storage));
-  const portal = new PortalService(db, audit, calendar, pedidos, assets, abonos);
+  const portal = crearPortalService({
+    db,
+    audit,
+    calendar,
+    pedidos,
+    assets,
+    abonos,
+  });
 
   const org = await crearOrgDePrueba(db, "org-e5-");
 
