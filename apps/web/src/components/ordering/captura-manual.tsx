@@ -3,23 +3,12 @@
 import {
   Alert,
   Button,
-  Chip,
-  ComboBox,
-  Description,
-  Input,
-  Label,
-  ListBox,
   Modal,
-  SearchField,
   Spinner,
-  TextArea,
-  TextField,
 } from "@heroui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
-  FAMILIA_ETIQUETA,
-  UNIDAD_CORTA,
   totalPedidoCentavos,
   precioEfectivoCentavos,
   type CalendarioAhora,
@@ -32,14 +21,12 @@ import {
 } from "@misupertostada/shared";
 import { api, ApiError } from "@/lib/api";
 import { agruparProductosCaptura } from "@/lib/pedido-vista";
-import { copyEjePedidos } from "@/lib/ejes-vista";
 import { toastFromError, toastSuccess } from "@/lib/toast";
-import { ContadorFacturas } from "@/components/domain/contador-facturas";
-import { Money } from "@/components/domain/money";
-import { PildorasEjePedidos } from "@/components/ordering/pildoras-eje-pedidos";
-import { ProductoThumb } from "@/components/catalog/producto-thumb";
-import { QuantityStepper } from "@/components/ui/quantity-stepper";
-import { cn } from "@/lib/utils";
+import { CapturaManualAviso } from "@/components/ordering/captura-manual-aviso";
+import { CapturaManualBonos } from "@/components/ordering/captura-manual-bonos";
+import { CapturaManualCatalogo } from "@/components/ordering/captura-manual-catalogo";
+import { CapturaManualCliente } from "@/components/ordering/captura-manual-cliente";
+import { CapturaManualPie } from "@/components/ordering/captura-manual-pie";
 
 type PropsCaptura = {
   open: boolean;
@@ -171,14 +158,6 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
     cuenta.data.limiteFacturasPendientes != null &&
     cuenta.data.facturasPendientes >= cuenta.data.limiteFacturasPendientes;
 
-  const copyCaptura = calendario.data
-    ? copyEjePedidos(
-        calendario.data.fechaOperacionCaptura,
-        calendario.data.fechaOperacionCaptura,
-        calendario.data,
-      )
-    : null;
-
   const capturar = useMutation({
     mutationFn: () =>
       api<PedidoDetalle>("/pedidos", {
@@ -199,6 +178,33 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
     },
   });
 
+  function seleccionarCliente(id: string) {
+    setClienteId(id);
+    setCantidades({});
+    setCantidadesBono({});
+    setNotasAdmin("");
+    setQ("");
+    setError(null);
+  }
+
+  function cambiarCantidadBono(bonoId: string, cantidad: number) {
+    setCantidadesBono((prev) => {
+      const next = { ...prev };
+      if (cantidad <= 0) delete next[bonoId];
+      else next[bonoId] = cantidad;
+      return next;
+    });
+  }
+
+  function cambiarCantidadProducto(productoId: string, cantidad: number) {
+    setCantidades((prev) => {
+      const next = { ...prev };
+      if (cantidad <= 0) delete next[productoId];
+      else next[productoId] = cantidad;
+      return next;
+    });
+  }
+
   return (
     <Modal.Backdrop isOpen={open} onOpenChange={(abierto) => !abierto && onClose()}>
       <Modal.Container size="lg">
@@ -214,186 +220,48 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
 
           <Modal.Body>
             <div className="grid gap-4">
-              {copyCaptura && calendario.data ? (
-                <div className="grid gap-2.5 rounded-campo border border-[var(--yellow-400)]/35 bg-[var(--yellow-100)]/90 px-3 py-3">
-                  <p className="text-sm leading-relaxed text-pretty text-[var(--amber-700)]">
-                    <span className="font-semibold">{copyCaptura.titulo}.</span>{" "}
-                    {copyCaptura.detalle}
-                  </p>
-                  <PildorasEjePedidos
-                    fecha={calendario.data.fechaOperacionCaptura}
-                    cal={calendario.data}
-                  />
-                </div>
+              {calendario.data ? (
+                <CapturaManualAviso calendario={calendario.data} />
               ) : null}
 
-              <ComboBox
-                isRequired
-                selectedKey={clienteId || null}
-                onSelectionChange={(key) => {
-                  setClienteId(typeof key === "string" ? key : "");
-                  setCantidades({});
-                  setCantidadesBono({});
-                  setNotasAdmin("");
-                  setQ("");
-                  setError(null);
-                }}
-              >
-                <Label>Cliente</Label>
-                <ComboBox.InputGroup>
-                  <Input placeholder="Buscar restaurante" />
-                  <ComboBox.Trigger />
-                </ComboBox.InputGroup>
-                <ComboBox.Popover>
-                  <ListBox>
-                    {activos.map((c) => (
-                      <ListBox.Item key={c.id} id={c.id} textValue={c.nombre}>
-                        {c.nombre}
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                  </ListBox>
-                </ComboBox.Popover>
-              </ComboBox>
+              <CapturaManualCliente
+                clientes={activos}
+                clienteId={clienteId}
+                onClienteChange={seleccionarCliente}
+                cuenta={cuenta.data}
+                limiteExcedido={limiteExcedido}
+                clienteNombre={clienteSeleccionado?.nombre}
+              />
 
-              {clienteId && cuenta.data ? (
-                <ContadorFacturas
-                  pendientes={cuenta.data.facturasPendientes}
-                  limite={cuenta.data.limiteFacturasPendientes}
-                  montoCentavos={cuenta.data.saldoCentavos}
-                  etiqueta={
-                    clienteSeleccionado
-                      ? `Facturas · ${clienteSeleccionado.nombre}`
-                      : "Facturas pendientes"
-                  }
+              {clienteId && bonosDisponibles.length > 0 ? (
+                <CapturaManualBonos
+                  bonos={bonosDisponibles}
+                  cantidadesBono={cantidadesBono}
+                  onCantidadChange={cambiarCantidadBono}
                 />
               ) : null}
 
-              {limiteExcedido ? (
-                <Alert status="warning">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Title>Límite de crédito excedido</Alert.Title>
-                    <Alert.Description>
-                      Puede capturar igual; avise a cartera.
-                    </Alert.Description>
-                  </Alert.Content>
-                </Alert>
-              ) : null}
-
-              {clienteId && bonosDisponibles.length > 0 && (
-                <section className="grid gap-2">
-                  <h3 className="mst-label px-0.5">Devolución pendiente</h3>
-                  <div className="rounded-campo border border-[var(--border-subtle)]">
-                    {bonosDisponibles.map((b) => (
-                      <div
-                        key={b.id}
-                        className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-3 last:border-b-0"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-tinta-900">
-                              {b.nombreCanonico}
-                            </p>
-                            <Chip size="sm" variant="soft" color="success">
-                              Devolución
-                            </Chip>
-                          </div>
-                          <p className="text-xs text-tinta-500">{b.descripcion}</p>
-                        </div>
-                        <QuantityStepper
-                          value={cantidadesBono[b.id] ?? 0}
-                          onChange={(cantidad) =>
-                            setCantidadesBono((prev) => {
-                              const next = { ...prev };
-                              if (cantidad <= 0) delete next[b.id];
-                              else next[b.id] = cantidad;
-                              return next;
-                            })
-                          }
-                          min={0}
-                          max={b.cantidadDisponible}
-                          unidad={UNIDAD_CORTA[b.unidadMedida]}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {clienteId && (
+              {clienteId ? (
                 <>
-                  <SearchField
-                    aria-label="Buscar producto"
-                    value={q}
-                    onChange={setQ}
-                  >
-                    <SearchField.Group>
-                      <SearchField.SearchIcon />
-                      <SearchField.Input placeholder="Alias o nombre" />
-                      <SearchField.ClearButton />
-                    </SearchField.Group>
-                  </SearchField>
+                  <CapturaManualCatalogo
+                    grupos={grupos}
+                    cargando={productos.isLoading}
+                    q={q}
+                    onBusquedaChange={setQ}
+                    fotoPorProducto={fotoPorProducto}
+                    cantidades={cantidades}
+                    onCantidadChange={cambiarCantidadProducto}
+                  />
 
-                  <div className="max-h-[40vh] overflow-auto rounded-campo border border-[var(--border-subtle)]">
-                    {grupos.map((grupo) => (
-                      <section key={grupo.key}>
-                        <h3 className="sticky top-0 z-[1] flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--ink-50)] px-3 py-2 mst-label">
-                          <span>{grupo.label}</span>
-                          <span className="tabular-nums text-tinta-400">
-                            {grupo.filas.length}
-                          </span>
-                        </h3>
-                        {grupo.filas.map((fila) => (
-                          <CapturaFila
-                            key={fila.productoId}
-                            fila={fila}
-                            fotoAssetId={fotoPorProducto.get(fila.productoId)}
-                            cantidad={cantidades[fila.productoId] ?? 0}
-                            onChange={(cantidad) =>
-                              setCantidades((prev) => {
-                                const next = { ...prev };
-                                if (cantidad <= 0) delete next[fila.productoId];
-                                else next[fila.productoId] = cantidad;
-                                return next;
-                              })
-                            }
-                          />
-                        ))}
-                      </section>
-                    ))}
-                    {grupos.length === 0 && (
-                      <p className="px-4 py-6 text-sm text-tinta-500">
-                        {productos.isLoading
-                          ? "Cargando catálogo…"
-                          : "Ningún producto coincide."}
-                      </p>
-                    )}
-                  </div>
-
-                  <TextField value={notasAdmin} onChange={setNotasAdmin}>
-                    <Label>Nota extraordinaria</Label>
-                    <TextArea rows={2} />
-                    <Description>
-                      Horario, grosor y punto de carga salen del catálogo. Aquí solo
-                      lo de hoy.
-                    </Description>
-                  </TextField>
-
-                  {/* El total va pegado al pie: es la cifra que se le dice al
-                      cliente por teléfono antes de colgar. */}
-                  <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-campo bg-[var(--ink-50)] px-4 py-3">
-                    <span className="mst-label">
-                      Total
-                      <span className="ml-2 font-normal tabular-nums text-tinta-500">
-                        {lineas} línea{lineas === 1 ? "" : "s"}
-                        {itemsBonos.length > 0 ? " · devolución a Q 0.00" : ""}
-                      </span>
-                    </span>
-                    <Money centavos={total} truncate className="text-lg" />
-                  </div>
+                  <CapturaManualPie
+                    notasAdmin={notasAdmin}
+                    onNotasChange={setNotasAdmin}
+                    totalCentavos={total}
+                    lineas={lineas}
+                    itemsBonos={itemsBonos.length}
+                  />
                 </>
-              )}
+              ) : null}
 
               {error && (
                 <Alert status="danger">
@@ -429,63 +297,5 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
         </Modal.Dialog>
       </Modal.Container>
     </Modal.Backdrop>
-  );
-}
-
-function CapturaFila({
-  fila,
-  fotoAssetId,
-  cantidad,
-  onChange,
-}: {
-  fila: ClienteProductoFila;
-  fotoAssetId?: string | null;
-  cantidad: number;
-  onChange: (cantidad: number) => void;
-}) {
-  const alias = fila.alias?.trim() || fila.nombreCanonico;
-  const unidad = UNIDAD_CORTA[fila.unidadMedida];
-  const precioEfectivo = precioEfectivoCentavos({
-    precioClienteCentavos: fila.precioCentavos,
-    precioBaseCentavos: fila.precioBaseCentavos,
-  });
-  const pedible = precioEfectivo != null;
-  return (
-    <div
-      className={cn(
-        "flex min-h-fila items-center gap-3 border-b border-[var(--border-subtle)] px-3 py-2.5 last:border-b-0",
-        "transition-colors duration-control ease-out",
-        cantidad > 0 && "bg-[var(--green-50)]",
-      )}
-    >
-      <ProductoThumb
-        nombre={fila.nombreCanonico}
-        fotoAssetId={fotoAssetId}
-        size="sm"
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-pretty text-tinta-900">
-          {fila.nombreCanonico}
-        </p>
-        <p className="text-[12px] text-tinta-500">
-          {alias !== fila.nombreCanonico ? `«${alias}» · ` : null}
-          {FAMILIA_ETIQUETA[fila.familia]}
-          {" · "}
-          {pedible ? (
-            <>
-              <Money centavos={precioEfectivo} tone="muted" /> / {unidad}
-            </>
-          ) : (
-            "Sin precio — no pedible"
-          )}
-        </p>
-      </div>
-      <QuantityStepper
-        value={cantidad}
-        onChange={onChange}
-        unidad={unidad}
-        disabled={!pedible}
-      />
-    </div>
   );
 }
