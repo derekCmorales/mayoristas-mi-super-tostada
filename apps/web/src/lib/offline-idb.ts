@@ -16,6 +16,28 @@ export type ColaStore = {
   getRuta(): Promise<RutaReparto | undefined>;
 };
 
+/**
+ * Interpreta lo persistido. Basura de un schema viejo o una escritura a
+ * medias no lanza: se omite. `MemoryColaStore.leerCola` nunca tira por
+ * contenido; IndexedDB tiene que cumplir el mismo contrato o el sync de
+ * Tony se cae entero por una sola fila.
+ */
+export function filasColaDesdeStorage(raw: unknown): FilaCola[] {
+  if (!Array.isArray(raw)) return [];
+  const filas: FilaCola[] = [];
+  for (const fila of raw) {
+    const parsed = filaColaSchema.safeParse(fila);
+    if (parsed.success) filas.push(parsed.data);
+  }
+  return filas;
+}
+
+export function rutaDesdeStorage(raw: unknown): RutaReparto | undefined {
+  if (!raw) return undefined;
+  const parsed = rutaRepartoSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const DB_NOMBRE = "mst-offline";
 const DB_VERSION = 1;
 const KEY_COLA = "filas";
@@ -60,8 +82,7 @@ export class IdbColaStore implements ColaStore {
 
   async leerCola(): Promise<FilaCola[]> {
     const raw = await this.get<unknown>("cola", KEY_COLA);
-    if (!Array.isArray(raw)) return [];
-    return raw.map((fila) => filaColaSchema.parse(fila));
+    return filasColaDesdeStorage(raw);
   }
 
   async escribirCola(cola: FilaCola[]): Promise<void> {
@@ -86,8 +107,7 @@ export class IdbColaStore implements ColaStore {
 
   async getRuta(): Promise<RutaReparto | undefined> {
     const raw = await this.get<unknown>("ruta", KEY_RUTA);
-    if (!raw) return undefined;
-    return rutaRepartoSchema.parse(raw);
+    return rutaDesdeStorage(raw);
   }
 
   private get<T>(store: string, key: string): Promise<T | undefined> {

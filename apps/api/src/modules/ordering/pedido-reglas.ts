@@ -1,11 +1,14 @@
 import {
   MENSAJE_PEDIDO_ANULADO,
   MENSAJE_VENTANA_CERRADA,
+  capturaAbierta,
   fechaDeInstante,
   formatearFechaLarga,
   horaEnZona,
   tienePermiso,
+  type BusinessCalendar,
 } from "@misupertostada/shared";
+import type { EjesOperacion } from "../shared/calendar.service";
 import { DomainException } from "../shared/domain.exception";
 import type { Actor } from "../identity/actor";
 import type { ClientePortal } from "./portal-token.service";
@@ -119,4 +122,17 @@ export function diaCerrado(): DomainException {
     "El día de operación ya está cerrado. Reabrir requiere motivo y lo hace solo el administrador jefe.",
     409,
   );
+}
+
+/**
+ * Un día REABIERTO acepta pedidos del portal aunque el reloj diga que la
+ * ventana venció: es lo mismo que ya permite el panel.
+ */
+export function exigirVentanaPortal(
+  cal: BusinessCalendar,
+  now: Date,
+  ejes: EjesOperacion,
+): void {
+  if (capturaAbierta(ejes.ventanaAbierta, ejes.estadoCaptura)) return;
+  throw ventanaCerrada(cal.getProximaApertura(now));
 }

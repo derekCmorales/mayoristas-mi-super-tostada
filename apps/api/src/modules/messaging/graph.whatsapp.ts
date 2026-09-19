@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { Injectable } from "@nestjs/common";
-import { loadEnv } from "../../config/env";
+import { eq } from "drizzle-orm";
+import { conexionWaba } from "@misupertostada/db";
 import { DomainException } from "../shared/domain.exception";
+import type { AppDatabase } from "../shared/database.module";
 import type {
   GraphPlantilla,
   SendTemplateInput,
@@ -23,23 +24,57 @@ export function verificarFirmaMeta(
   return timingSafeEqual(a, b);
 }
 
-type Auth = { accessToken: string; phoneNumberId: string; wabaId: string };
+export type AuthWaba = {
+  accessToken: string;
+  phoneNumberId: string;
+  wabaId: string;
+};
 
-@Injectable()
+export type ResolverAuthWaba = (
+  organizacionId: string,
+) => Promise<AuthWaba | null>;
+
+/**
+ * El adapter Graph no lee `conexion_waba` a ciegas desde el dominio:
+ * el composition root le pasa este lookup. Los tests inyectan un stub.
+ */
+export function resolverAuthWabaDesdeDb(
+  db: AppDatabase,
+  crypto: { decrypt(payload: string): string | null },
+): ResolverAuthWaba {
+  return async (organizacionId) => {
+    const [row] = await db
+      .select()
+      .from(conexionWaba)
+      .where(eq(conexionWaba.organizacionId, organizacionId))
+      .limit(1);
+    if (!row?.phoneNumberId || !row.accessTokenCifrado || !row.wabaId) {
+      return null;
+    }
+    const accessToken = crypto.decrypt(row.accessTokenCifrado);
+    if (!accessToken) return null;
+    return {
+      accessToken,
+      phoneNumberId: row.phoneNumberId,
+      wabaId: row.wabaId,
+    };
+  };
+}
+
 export class GraphWhatsAppAdapter implements WhatsAppPort {
-  private auth: Auth | null = null;
+  constructor(
+    private readonly graphVersion: string,
+    private readonly resolverAuth: ResolverAuthWaba,
+  ) {}
 
-  bind(auth: Auth): WhatsAppPort {
-    const next = new GraphWhatsAppAdapter();
-    next.auth = auth;
-    return next;
-  }
-
-  async sendText(input: { to: string; body: string }): Promise<WhatsAppSendResult> {
-    const auth = this.requireAuth();
-    const env = loadEnv();
+  async sendText(input: {
+    organizacionId: string;
+    to: string;
+    body: string;
+  }): Promise<WhatsAppSendResult> {
+    const auth = await this.requireAuth(input.organizacionId);
     const json = await graphPost(
-      env.META_GRAPH_VERSION,
+      this.graphVersion,
       `${auth.phoneNumberId}/messages`,
       auth.accessToken,
       {
@@ -53,8 +88,7 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
   }
 
   async sendTemplate(input: SendTemplateInput): Promise<WhatsAppSendResult> {
-    const auth = this.requireAuth();
-    const env = loadEnv();
+    const auth = await this.requireAuth(input.organizacionId);
     const components: unknown[] = [];
     if (input.headerDocumentId) {
       components.push({
@@ -79,7 +113,7 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
       });
     }
     const json = await graphPost(
-      env.META_GRAPH_VERSION,
+      this.graphVersion,
       `${auth.phoneNumberId}/messages`,
       auth.accessToken,
       {
@@ -97,25 +131,32 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
   }
 
   async uploadDocument(input: {
+    organizacionId: string;
     bytes: Buffer;
     mime: string;
     filename: string;
   }): Promise<{ mediaId: string }> {
-    const auth = this.requireAuth();
-    const env = loadEnv();
+    const auth = await this.requireAuth(input.organizacionId);
     const form = new FormData();
     form.set("messaging_product", "whatsapp");
     form.set("type", input.mime);
-    form.set("file", new Blob([new Uint8Array(input.bytes)], { type: input.mime }), input.filename);
+    form.set(
+      "file",
+      new Blob([new Uint8Array(input.bytes)], { type: input.mime }),
+      input.filename,
+    );
     const res = await fetch(
-      `https://graph.facebook.com/${env.META_GRAPH_VERSION}/${auth.phoneNumberId}/media`,
+      `https://graph.facebook.com/${this.graphVersion}/${auth.phoneNumberId}/media`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${auth.accessToken}` },
         body: form,
       },
     );
-    const json = (await res.json()) as { id?: string; error?: { message?: string; code?: number } };
+    const json = (await res.json()) as {
+      id?: string;
+      error?: { message?: string; code?: number };
+    };
     if (!res.ok) {
       throw new DomainException(
         "WHATSAPP",
@@ -130,8 +171,7 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
     wabaId: string;
     accessToken: string;
   }): Promise<GraphPlantilla[]> {
-    const env = loadEnv();
-    const url = `https://graph.facebook.com/${env.META_GRAPH_VERSION}/${input.wabaId}/message_templates?limit=250`;
+    const url = `https://graph.facebook.com/${this.graphVersion}/${input.wabaId}/message_templates?limit=250`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${input.accessToken}` },
     });
@@ -145,7 +185,11 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
       }>;
     };
     if (!res.ok) {
-      throw new DomainException("WHATSAPP", "No se pudieron sincronizar las plantillas", 502);
+      throw new DomainException(
+        "WHATSAPP",
+        "No se pudieron sincronizar las plantillas",
+        502,
+      );
     }
     return (json.data ?? []).map((row) => ({
       name: row.name,
@@ -160,24 +204,24 @@ export class GraphWhatsAppAdapter implements WhatsAppPort {
     wabaId: string;
     accessToken: string;
   }): Promise<void> {
-    const env = loadEnv();
     await graphPost(
-      env.META_GRAPH_VERSION,
+      this.graphVersion,
       `${input.wabaId}/subscribed_apps`,
       input.accessToken,
       {},
     );
   }
 
-  private requireAuth(): Auth {
-    if (!this.auth) {
+  private async requireAuth(organizacionId: string): Promise<AuthWaba> {
+    const auth = await this.resolverAuth(organizacionId);
+    if (!auth) {
       throw new DomainException(
         "NO_DISPONIBLE",
         "WhatsApp no está conectado",
         409,
       );
     }
-    return this.auth;
+    return auth;
   }
 }
 

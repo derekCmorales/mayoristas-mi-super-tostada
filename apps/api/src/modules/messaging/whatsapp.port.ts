@@ -11,6 +11,7 @@ export type GraphPlantilla = {
 };
 
 export type SendTemplateInput = {
+  organizacionId: string;
   to: string;
   name: string;
   language: string;
@@ -20,9 +21,14 @@ export type SendTemplateInput = {
 };
 
 export interface WhatsAppPort {
-  sendText(input: { to: string; body: string }): Promise<WhatsAppSendResult>;
+  sendText(input: {
+    organizacionId: string;
+    to: string;
+    body: string;
+  }): Promise<WhatsAppSendResult>;
   sendTemplate(input: SendTemplateInput): Promise<WhatsAppSendResult>;
   uploadDocument(input: {
+    organizacionId: string;
     bytes: Buffer;
     mime: string;
     filename: string;

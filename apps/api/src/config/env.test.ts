@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadEnv } from "./env";
+import { loadEnv, metaWhatsAppConfigured } from "./env";
 
 describe("loadEnv", () => {
   test("cadenas vacías de compose no cuentan como valor", () => {
@@ -16,6 +16,8 @@ describe("loadEnv", () => {
       expect(env.META_APP_ID).toBeUndefined();
       expect(env.APP_ENCRYPTION_KEY).toBeUndefined();
       expect(env.META_GRAPH_VERSION).toBe("v21.0");
+      expect(metaWhatsAppConfigured(env)).toBe(false);
+      expect(metaWhatsAppConfigured({ META_APP_ID: "123" })).toBe(true);
     } finally {
       for (const key of Object.keys(process.env)) {
         delete process.env[key];

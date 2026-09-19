@@ -74,6 +74,11 @@ export function metaSignupConfigured(env: Env): boolean {
   return Boolean(env.META_APP_ID && env.META_CONFIG_ID);
 }
 
+/** Hay app de Meta: el composition root elige Graph en vez del fake. */
+export function metaWhatsAppConfigured(env: Pick<Env, "META_APP_ID">): boolean {
+  return Boolean(env.META_APP_ID);
+}
+
 export function r2Configured(env: Env): boolean {
   return Boolean(
     env.R2_ACCOUNT_ID &&

@@ -160,7 +160,11 @@ export class ConversacionService {
       if (input.cuerpoRenderizado !== input.cuerpo) {
         throw new DomainException("PREVIEW_NO_COINCIDE", MENSAJE_PREVIEW_NO_COINCIDE, 409);
       }
-      const sent = await this.wa.sendText({ to, body: input.cuerpo });
+      const sent = await this.wa.sendText({
+        organizacionId: actor.organizacionId,
+        to,
+        body: input.cuerpo,
+      });
       return this.persistirOutbound({
         conv,
         actor,
@@ -196,6 +200,7 @@ export class ConversacionService {
       throw new DomainException("PREVIEW_NO_COINCIDE", MENSAJE_PREVIEW_NO_COINCIDE, 409);
     }
     const sent = await this.wa.sendTemplate({
+      organizacionId: actor.organizacionId,
       to,
       name: tpl.name,
       language: tpl.language,

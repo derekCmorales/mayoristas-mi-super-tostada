@@ -44,7 +44,7 @@ import { ClientesService } from "../catalog/clientes.service";
 import { ClienteProductoService } from "../catalog/cliente-producto.service";
 import { ClienteBonoService } from "../catalog/cliente-bono.service";
 import { PortalTokenService } from "./portal-token.service";
-import { PortalService } from "./portal.service";
+import { crearPortalService } from "../../test/portal-fixture";
 import { PedidoEvents } from "./pedido-events";
 import { PedidoService } from "./pedido.service";
 import { ConfiguracionService } from "../shared/configuracion.service";
@@ -86,7 +86,14 @@ async function fixture(clock: Clock) {
   const assets = new AssetsService(db, storage, variants);
   const facturas = new FacturaService(db, audit, outboxWriter, calendar, events);
   const abonos = new AbonoService(db, audit, calendar, events, facturas);
-  const portal = new PortalService(db, audit, calendar, pedidos, assets, abonos);
+  const portal = crearPortalService({
+    db,
+    audit,
+    calendar,
+    pedidos,
+    assets,
+    abonos,
+  });
   const cfg = new ConfiguracionService(db, audit, calendar);
 
   const org = await crearOrgDePrueba(db, "org-e2-");
