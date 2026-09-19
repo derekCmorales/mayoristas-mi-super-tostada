@@ -5,6 +5,7 @@ import {
   instanteAIso,
   portalFacturaSchema,
   portalFacturasSchema,
+  portalPedidoDetalleFacturaSchema,
   estadoFactura,
   type PortalFacturaFiltro,
   type PortalFacturas,
@@ -127,8 +128,14 @@ export class FacturaPortalService implements FacturaPortal {
       abonosAplicadosDeFactura(this.db, fac.factura.id),
     ]);
 
-    return {
-      ...facturaInfo,
+    return portalPedidoDetalleFacturaSchema.parse({
+      id: facturaInfo.id,
+      numeroDte: facturaInfo.numeroDte,
+      montoCentavos: facturaInfo.montoCentavos,
+      abonadoCentavos: facturaInfo.abonadoCentavos,
+      saldoCentavos: facturaInfo.saldoCentavos,
+      antiguedadDias: facturaInfo.antiguedadDias,
+      estado: facturaInfo.estado,
       abonos: abonos.map((a) => ({
         abonoId: a.abonoId,
         fecha: a.fecha,
@@ -136,6 +143,6 @@ export class FacturaPortalService implements FacturaPortal {
         estado: a.estado,
         montoCentavos: a.montoCentavos,
       })),
-    };
+    });
   }
 }
