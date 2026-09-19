@@ -8,6 +8,10 @@ import { ClienteBonoService } from "./cliente-bono.service";
 import { ImportService } from "./import.service";
 import { ImportController } from "./import.controller";
 import { CLIENTE_CREADOR, CLIENTE_PROPIETARIO } from "./cliente-ports";
+import { IMPORT_HANDLERS } from "./import-tokens";
+import { ProductosImportHandler } from "./productos-import.handler";
+import { ClientesImportHandler } from "./clientes-import.handler";
+import { ClienteProductoImportHandler } from "./cliente-producto-import.handler";
 
 @Module({
   controllers: [ProductosController, ClientesController, ImportController],
@@ -18,6 +22,22 @@ import { CLIENTE_CREADOR, CLIENTE_PROPIETARIO } from "./cliente-ports";
     { provide: CLIENTE_CREADOR, useExisting: ClientesService },
     ClienteProductoService,
     ClienteBonoService,
+    ProductosImportHandler,
+    ClientesImportHandler,
+    ClienteProductoImportHandler,
+    {
+      provide: IMPORT_HANDLERS,
+      useFactory: (
+        productos: ProductosImportHandler,
+        clientes: ClientesImportHandler,
+        clienteProducto: ClienteProductoImportHandler,
+      ) => [productos, clientes, clienteProducto],
+      inject: [
+        ProductosImportHandler,
+        ClientesImportHandler,
+        ClienteProductoImportHandler,
+      ],
+    },
     ImportService,
   ],
   exports: [ClienteBonoService],

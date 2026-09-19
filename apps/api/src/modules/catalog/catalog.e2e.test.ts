@@ -22,6 +22,9 @@ import { ClientesService } from "./clientes.service";
 import { ClienteProductoService } from "./cliente-producto.service";
 import { ClienteBonoService } from "./cliente-bono.service";
 import { ImportService } from "./import.service";
+import { ProductosImportHandler } from "./productos-import.handler";
+import { ClientesImportHandler } from "./clientes-import.handler";
+import { ClienteProductoImportHandler } from "./cliente-producto-import.handler";
 import { PedidoEvents } from "../shared/panel-events";
 
 const listo = await postgresListo();
@@ -34,13 +37,12 @@ async function fixture() {
   const clientes = new ClientesService(db, audit);
   const clienteProductoSvc = new ClienteProductoService(db, audit, clientes, events);
   const clienteBonoSvc = new ClienteBonoService(db, audit, clientes, events);
-  const importSvc = new ImportService(
-    db,
-    audit,
-    productos,
-    clientes,
-    clienteProductoSvc,
-  );
+  const importHandlers = [
+    new ProductosImportHandler(db, productos),
+    new ClientesImportHandler(db, clientes),
+    new ClienteProductoImportHandler(db, clienteProductoSvc),
+  ];
+  const importSvc = new ImportService(audit, importHandlers);
 
   const org = await crearOrgDePrueba(db, "org-");
 
