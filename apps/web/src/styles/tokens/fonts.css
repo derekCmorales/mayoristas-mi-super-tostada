@@ -2,7 +2,7 @@
    next/font/google no se usa: el build no alcanza fonts.gstatic.com.
    Nunito Sans: redondeada y legible; reemplaza el corte técnico de Plex + versalitas. */
 :root {
-  --ui-scale: 0.9; /* densidad global; no usar zoom (rompe 100dvh del panel) */
+  --ui-scale: 0.85; /* densidad global ≈ zoom 85%. No usar zoom CSS: rompe 100dvh del panel. */
   --font-nunito: "Nunito Sans";
   --font-core: var(--font-nunito), system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
