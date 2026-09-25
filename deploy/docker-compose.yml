@@ -59,7 +59,7 @@ services:
       POSTGRES_DB: misupertostada
       POSTGRES_HOST: postgres
       API_PORT: "3001"
-      WEB_ORIGIN: https://mayoristas.larasolutions.dev
+      WEB_ORIGIN: https://pedidos.misupertostada.com
       SESSION_COOKIE_NAME: session
       SESSION_TTL_SECONDS: "604800"
       BOOTSTRAP_ADMIN_USERNAME: cristian

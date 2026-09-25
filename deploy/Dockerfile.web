@@ -19,7 +19,7 @@ COPY packages/pdf/package.json packages/pdf/package.json
 RUN unset NODE_ENV && bun install --frozen-lockfile --linker=hoisted
 # Default de producción (Openship no inyecta build args al compose). Override:
 #   docker build --build-arg NEXT_PUBLIC_API_URL=https://… -f deploy/Dockerfile.web .
-ARG NEXT_PUBLIC_API_URL=https://apimayoristas.larasolutions.dev
+ARG NEXT_PUBLIC_API_URL=https://apipedidos.misupertostada.com
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
