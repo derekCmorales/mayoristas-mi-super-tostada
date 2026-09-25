@@ -95,7 +95,7 @@ describe("etiquetaVentanaBadge", () => {
     expect(res.etiqueta).toBe("Ventana reabierta");
   });
 
-  test("whatsapp muestra 24 h con cuenta regresiva cuando no es compacto", () => {
+  test("whatsapp muestra puede responder con cuenta regresiva cuando no es compacto", () => {
     const expiraAt = new Date("2026-09-03T20:00:00.000Z").toISOString();
     const res = etiquetaVentanaBadge({
       tipo: "whatsapp",
@@ -106,10 +106,10 @@ describe("etiquetaVentanaBadge", () => {
     });
 
     expect(res.viva).toBe(true);
-    expect(res.etiqueta).toBe("24 h · 2:00:00");
+    expect(res.etiqueta).toBe("Puede responder · queda 2:00:00");
   });
 
-  test("whatsapp con compacto=true muestra únicamente 24 h", () => {
+  test("whatsapp con compacto=true muestra únicamente Puede responder", () => {
     const expiraAt = new Date("2026-09-03T20:00:00.000Z").toISOString();
     const res = etiquetaVentanaBadge({
       tipo: "whatsapp",
@@ -120,6 +120,19 @@ describe("etiquetaVentanaBadge", () => {
     });
 
     expect(res.viva).toBe(true);
-    expect(res.etiqueta).toBe("24 h");
+    expect(res.etiqueta).toBe("Puede responder");
+  });
+
+  test("whatsapp cerrada habla de avisos armados", () => {
+    const res = etiquetaVentanaBadge({
+      tipo: "whatsapp",
+      abierta: false,
+      expiraAt: null,
+      compacto: false,
+      now: baseNow,
+    });
+
+    expect(res.viva).toBe(false);
+    expect(res.etiqueta).toBe("Solo avisos armados");
   });
 });

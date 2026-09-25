@@ -15,7 +15,7 @@ const processes = [
   },
   {
     name: "test",
-    cmd: ["bun", "test", "--watch"],
+    cmd: ["bun", "test", "--watch", "--timeout", "15000", "--max-concurrency", "8"],
     color: "\x1b[32m",
   },
 ] as const;

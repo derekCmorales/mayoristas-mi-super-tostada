@@ -9,7 +9,7 @@
     "dev:all": "bun run scripts/dev-all.ts",
     "build": "bun run --filter web build && bun run --filter api build",
     "lint": "bun run --filter web lint",
-    "test": "bun test",
+    "test": "bun test --timeout 15000 --max-concurrency 8",
     "typecheck": "bun run --filter api typecheck && bun run --filter web typecheck",
     "db:create": "bun packages/db/src/create-db.ts",
     "db:migrate": "bun run --filter @misupertostada/db migrate",

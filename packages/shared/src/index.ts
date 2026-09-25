@@ -444,6 +444,7 @@ export {
   MENSAJE_VENTANA_WA_CERRADA,
   MESSAGING_SSE_TIPOS,
   PLANTILLA_PROPOSITOS,
+  PROPOSITO_ETIQUETA,
   TIPO_OUTBOX_INVITACION,
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
   TIPO_OUTBOX_RECORDATORIO,
@@ -461,6 +462,7 @@ export {
   paramsConsolidado,
   paramsEstadoCuenta,
   paramsInvitacion,
+  pedidoNocheSchema,
   plantillaWaPublicaSchema,
   recordatorioCobroRequestSchema,
   renderCuerpoPlantilla,
@@ -481,5 +483,6 @@ export {
   type MessagingSseEvent,
   type PlantillaProposito,
   type PlantillaWaPublica,
+  type PedidoNoche,
   type RecordatorioCobroRequest,
 } from "./messaging";

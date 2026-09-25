@@ -1,6 +1,5 @@
 "use client";
 
-import { ScrollShadow } from "@heroui/react";
 import {
   fechaDeInstante,
   formatearFechaLarga,
@@ -8,6 +7,7 @@ import {
   type ConversacionDetalle,
 } from "@misupertostada/shared";
 import { useEffect, useRef } from "react";
+import { etiquetaMensajeSaliente } from "@/lib/conversacion-vista";
 import { MensajePreview } from "@/components/domain/mensaje-preview";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,6 @@ export function HiloConversacion({
   const cajaRef = useRef<HTMLDivElement>(null);
   const total = conversacion.mensajes.length;
 
-  /* El hilo abre por el final: lo último dicho es lo que decide la respuesta. */
   useEffect(() => {
     const caja = cajaRef.current;
     if (caja) caja.scrollTop = caja.scrollHeight;
@@ -29,14 +28,17 @@ export function HiloConversacion({
 
   if (total === 0) {
     return (
-      <p className="bg-[var(--cream-100)] px-4 py-10 text-center text-sm text-tinta-500">
+      <p
+        className={cn(
+          "grid h-full min-h-0 place-items-center bg-[var(--cream-100)] px-4 py-10 text-center text-sm text-tinta-500",
+          className,
+        )}
+      >
         Todavía no hay mensajes en este hilo.
       </p>
     );
   }
 
-  /* El corte de día se calcula antes de pintar: comparar contra el mensaje
-     anterior evita llevar un acumulador vivo dentro del render. */
   const filas = conversacion.mensajes.map((m, i) => {
     const instante = new Date(m.createdAt);
     const dia = String(fechaDeInstante(instante));
@@ -48,15 +50,17 @@ export function HiloConversacion({
   });
 
   return (
-    <ScrollShadow
+    <div
       ref={cajaRef}
       className={cn(
-        "max-h-[min(52dvh,460px)] bg-[var(--cream-100)] lg:max-h-[min(52vh,460px)]",
+        "min-h-0 overflow-y-auto overscroll-contain bg-[var(--cream-100)]",
         className,
       )}
     >
       <div className="grid gap-4 px-4 py-4">
         {filas.map(({ m, hora, dia, abreDia }) => {
+          const esEntrante = m.direction === "INBOUND";
+
           return (
             <div key={m.id} className="grid gap-4">
               {abreDia ? (
@@ -65,38 +69,40 @@ export function HiloConversacion({
                 </p>
               ) : null}
 
-              {m.direction === "INBOUND" ? (
-                /* Entrante: burbuja sólida de marca a la derecha, con el rótulo
-                   de origen que el saliente ya trae en MensajePreview. Los dos
-                   lados se leen igual de rápido. */
-                <div className="grid w-full max-w-[min(100%,380px)] gap-1.5 justify-self-end">
-                  <span className="mst-label justify-self-end">
-                    {conversacion.clienteNombre}
-                  </span>
-                  <div className="rounded-[14px_14px_4px_14px] bg-[var(--green-800)] p-3 text-sm text-blanco shadow-[var(--shadow-xs)]">
+              {esEntrante ? (
+                <div className="grid w-full max-w-[min(100%,380px)] gap-1.5 justify-self-start">
+                  <span className="mst-label">{conversacion.clienteNombre}</span>
+                  <div className="rounded-[14px_14px_14px_4px] border border-[var(--green-200)] bg-[var(--green-50)] p-3 text-sm text-tinta-800 shadow-[var(--shadow-xs)]">
                     <p className="whitespace-pre-wrap leading-relaxed">
                       {m.bodyRenderizado}
                     </p>
-                    <p className="mt-1 text-right text-[11px] tabular-nums text-[var(--green-200)]">
-                      {hora} · entrante
+                    <p className="mt-1 text-right text-[11px] tabular-nums text-tinta-500">
+                      {hora}
                     </p>
                   </div>
                 </div>
               ) : (
                 <MensajePreview
-                  tipo={m.tipo === "plantilla" ? "plantilla" : "libre"}
-                  plantilla={m.templateName ?? undefined}
+                  variant={
+                    m.tipo === "plantilla" ? "aviso" : "respuesta"
+                  }
+                  proposito={m.proposito ?? undefined}
+                  etiqueta={etiquetaMensajeSaliente(m)}
                   cuerpo={m.bodyRenderizado ?? ""}
                   adjunto={m.adjuntoNombre ?? undefined}
                   hora={hora}
                   estado={m.status ?? undefined}
-                  className={cn(m.status === "failed" && "opacity-80")}
+                  alineacion="derecha"
+                  className={cn(
+                    "justify-self-end",
+                    m.status === "failed" && "opacity-80",
+                  )}
                 />
               )}
             </div>
           );
         })}
       </div>
-    </ScrollShadow>
+    </div>
   );
 }

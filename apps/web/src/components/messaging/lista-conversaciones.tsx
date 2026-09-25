@@ -15,13 +15,14 @@ export function ListaConversaciones({
   loading,
   vacio,
   onSelect,
+  className,
 }: {
   items: ConversacionBandeja[];
   sel: string | null;
   loading: boolean;
-  /** Copy alterno cuando la lista está vacía por búsqueda o filtro. */
   vacio?: ReactNode;
   onSelect: (id: string) => void;
+  className?: string;
 }) {
   if (loading) return <RowSkeleton rows={8} />;
   if (items.length === 0) {
@@ -37,13 +38,9 @@ export function ListaConversaciones({
   }
 
   return (
-    /* ListBox de HeroUI en vez de una pila de <button>: la selección única, el
-       rol de lista y la navegación con flechas / Home / End vienen dadas, que es
-       lo que se espera de una bandeja. El paso a paso visual (filete de marca,
-       filas separadas) se mantiene con utilidades. */
     <ListBox
       aria-label="Conversaciones"
-      className="max-h-[min(60dvh,520px)] overflow-y-auto p-0 lg:max-h-[min(60vh,520px)] [&>*+*]:mt-0"
+      className={cn("p-0 [&>*+*]:mt-0", className)}
       disallowEmptySelection
       selectedKeys={sel ? new Set([sel]) : new Set<string>()}
       selectionMode="single"

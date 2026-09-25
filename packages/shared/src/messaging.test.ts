@@ -4,10 +4,15 @@ import {
   META_PARAM_MAX_CHARS,
   MENSAJE_VENTANA_WA_CERRADA,
   PLANTILLA_PROPOSITOS,
+  PROPOSITO_ETIQUETA,
+  conversacionBandejaSchema,
+  conversacionDetalleSchema,
   enviarMensajeRequestSchema,
+  mensajePublicoSchema,
   paramsConfirmacion,
   paramsEstadoCuenta,
   paramsInvitacion,
+  pedidoNocheSchema,
   renderCuerpoPlantilla,
   textoEstadoCuenta,
   textoInvitacion,
@@ -164,8 +169,72 @@ describe("ventana de 24 h desde el webhook", () => {
   });
 });
 
+describe("contrato de bandeja enriquecido", () => {
+  const base = {
+    id: "11111111-1111-4111-8111-111111111111",
+    clienteId: "22222222-2222-4222-8222-222222222222",
+    clienteNombre: "Tabascos",
+    telefonoWa: "50212345678",
+    ventanaExpiraAt: null,
+    ventanaAbierta: false,
+    ultimoInboundAt: null,
+    noLeidos: 0,
+    ultimoCuerpo: "Hola",
+    ultimoAt: "2026-08-20T21:00:00.000Z",
+    horarioEntregaFijo: "07:00",
+    notasPermanentes: "Grosor especial",
+    saldoCentavos: 125000,
+    facturasPendientes: 2,
+    pedidoNoche: {
+      id: "33333333-3333-4333-8333-333333333333",
+      correlativo: 42,
+      estado: "CONFIRMADO" as const,
+      fechaOperacion: "2026-08-20",
+    },
+    fechaOperacionViva: "2026-08-20",
+  };
+
+  test("ConversacionBandeja incluye contexto de restaurante", () => {
+    const parsed = conversacionBandejaSchema.parse(base);
+    expect(parsed.saldoCentavos).toBe(125000);
+    expect(parsed.pedidoNoche?.correlativo).toBe(42);
+  });
+
+  test("ConversacionDetalle extiende bandeja con mensajes y proposito", () => {
+    const parsed = conversacionDetalleSchema.parse({
+      ...base,
+      mensajes: [
+        mensajePublicoSchema.parse({
+          id: "44444444-4444-4444-8444-444444444444",
+          waMessageId: "w1",
+          direction: "OUTBOUND",
+          tipo: "plantilla",
+          templateName: "mst_estado_cuenta_v1",
+          proposito: "ESTADO_CUENTA",
+          bodyRenderizado: "Estado",
+          status: "sent",
+          errorCode: null,
+          createdAt: "2026-08-20T21:00:00.000Z",
+        }),
+      ],
+    });
+    expect(parsed.mensajes[0]?.proposito).toBe("ESTADO_CUENTA");
+  });
+
+  test("pedidoNocheSchema rechaza montos flotantes", () => {
+    expect(
+      pedidoNocheSchema.safeParse({
+        id: "33333333-3333-4333-8333-333333333333",
+        correlativo: 1,
+        estado: "CONFIRMADO",
+        fechaOperacion: "2026-08-20",
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe("constantes de plataforma", () => {
-  test("los cuatro propósitos y el copy de 131047 están fijos", () => {
+  test("los cuatro propósitos y el copy operativo están fijos", () => {
     expect([...PLANTILLA_PROPOSITOS]).toEqual([
       "INVITACION",
       "CONFIRMACION",
@@ -173,7 +242,7 @@ describe("constantes de plataforma", () => {
       "CONSOLIDADO",
     ]);
     expect(META_ERROR_VENTANA_CERRADA).toBe("131047");
-    expect(MENSAJE_VENTANA_WA_CERRADA).toMatch(/24 h/);
-    expect(MENSAJE_VENTANA_WA_CERRADA).toMatch(/plantillas aprobadas/i);
+    expect(MENSAJE_VENTANA_WA_CERRADA).toMatch(/aviso/i);
+    expect(PROPOSITO_ETIQUETA.ESTADO_CUENTA).toBe("Aviso de estado de cuenta");
   });
 });

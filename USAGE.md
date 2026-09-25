@@ -680,19 +680,23 @@ periodo elegido.
 
 ### E7 — Mensajería
 
-#### WhatsApp (F-701–F-706) — `/conversaciones`
+#### WhatsApp — `/conversaciones`
+
+**Para qué sirve:** cola de **excepciones** de restaurantes. Cristian contesta lo que escribieron; invitaciones, confirmaciones, estados de cuenta y consolidados salen solos por outbox.
 
 **Lógica clave:**
 
 - Sin credenciales Meta → **`FakeWhatsAppAdapter`** (desarrollo no bloqueado)
-- Ventana 24 h: fuera solo plantillas aprobadas
-- Composer bloqueado a plantillas cuando ventana cerrada
-- Validador: sin saltos de línea, sin >4 espacios, preview obligatorio
-- Automatizaciones: invitación 18:00, confirmación de pedido, recordatorio con PDF de estado de cuenta
+- Si el restaurante escribió recientemente → puede responder en texto libre
+- Si no escribió → solo avisos ya armados (p. ej. **Mandar estado de cuenta**)
+- Preview obligatorio antes de enviar texto libre
+- Ficha lateral: pedido de esta noche, horario, saldo, notas
 
 **Cómo probar:**
 
 ```bash
+bun test apps/web/src/lib/conversacion-vista.test.ts
+bun test apps/web/src/components/domain/ventana-badge.test.ts
 bun test apps/api/src/modules/messaging/messaging.e2e.test.ts
 bun test packages/shared/src/messaging.test.ts
 ```
@@ -700,15 +704,17 @@ bun test packages/shared/src/messaging.test.ts
 **Manual (fake):**
 
 1. `/conversaciones` → abrir conversación de un cliente con teléfono WA
-2. **Simular mensaje entrante** (abre ventana 24 h)
-3. Enviar texto libre o plantilla según estado de ventana
-4. Ver preview antes de enviar
+2. En **Pruebas** (solo desarrollo): simular mensaje del restaurante
+3. Con ventana viva: escribir y enviar texto libre
+4. Con ventana apagada: **Mandar estado de cuenta** (igual que en cartera)
 
 **API útil en dev:**
 
 ```
 POST /conversaciones/:id/simular-inbound
 POST /conversaciones/:id/enviar
+POST /cartera/clientes/:id/recordatorio
+GET  /conversaciones/:id
 GET  /mensajeria/plantillas
 ```
 

@@ -1,43 +1,67 @@
 import { Check, CheckCheck, FileText, TriangleAlert } from "lucide-react";
+import {
+  PROPOSITO_ETIQUETA,
+  type PlantillaProposito,
+} from "@misupertostada/shared";
 import { cn } from "@/lib/utils";
 
 type EstadoUi = "enviado" | "entregado" | "leido" | "error" | "pending";
 
 export function MensajePreview({
-  tipo = "plantilla",
-  plantilla,
+  variant = "respuesta",
+  proposito,
+  etiqueta,
   cuerpo,
   adjunto,
   hora,
   estado,
+  alineacion = "izquierda",
   className,
 }: {
+  /** @deprecated use variant */
   tipo?: "plantilla" | "libre";
+  variant?: "aviso" | "respuesta";
+  proposito?: PlantillaProposito;
+  etiqueta?: string;
+  /** @deprecated use etiqueta/proposito */
   plantilla?: string;
   cuerpo: string;
   adjunto?: string;
   hora?: string;
   estado?: string;
+  alineacion?: "izquierda" | "derecha";
   className?: string;
 }) {
-  const esPlantilla = tipo === "plantilla";
+  const esAviso = variant === "aviso";
+  const rotulo =
+    etiqueta ??
+    (proposito ? PROPOSITO_ETIQUETA[proposito] : undefined) ??
+    (esAviso ? "Aviso automático" : "Respuesta de la fábrica");
   const marca = normalizarEstado(estado);
+
   return (
-    <div className={cn("grid gap-1.5", className)}>
-      <div className="flex items-center gap-2">
-        <span className="mst-label">
-          {esPlantilla ? "Plantilla aprobada" : "Mensaje libre"}
-        </span>
-        {plantilla ? (
-          <code className="rounded-pill bg-tinta-50 px-2 py-0.5 font-mono text-[11px] text-tinta-800">
-            {plantilla}
-          </code>
-        ) : null}
-      </div>
+    <div
+      className={cn(
+        "grid max-w-[min(100%,420px)] gap-1.5",
+        alineacion === "derecha" ? "justify-self-end" : "justify-self-start",
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          "mst-label",
+          alineacion === "derecha" ? "text-right" : "text-left",
+        )}
+      >
+        {rotulo}
+      </span>
       <div
         className={cn(
-          "max-w-[420px] rounded-[14px_14px_14px_4px] border p-3 shadow-[var(--shadow-xs)]",
-          esPlantilla
+          "rounded-[14px] border p-3 shadow-[var(--shadow-xs)]",
+          alineacion === "derecha"
+            ? "rounded-br-[4px]"
+            : "rounded-bl-[4px]",
+          esAviso
             ? "border-[var(--green-200)] bg-[var(--green-50)]"
             : "border-[var(--border-subtle)] bg-blanco",
         )}

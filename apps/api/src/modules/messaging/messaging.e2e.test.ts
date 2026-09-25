@@ -258,7 +258,7 @@ describe.skipIf(!listo)("mensajería E7", () => {
           { tipo: "texto", cuerpo: "Hola", cuerpoRenderizado: "Hola" },
           f.actor,
         ),
-      ).rejects.toMatchObject({ message: expect.stringContaining("24 h") });
+      ).rejects.toMatchObject({ message: expect.stringContaining("aviso") });
       expect(META_ERROR_VENTANA_CERRADA).toBe("131047");
       expect(f.fake.envios).toHaveLength(0);
 
@@ -541,6 +541,78 @@ describe.skipIf(!listo)("mensajería E7", () => {
         .returning({ id: outbox.id });
       expect(second).toHaveLength(0);
       expect(f.fake.envios.length).toBe(before);
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("listar y obtener enriquecen contexto; obtener no re-lista", async () => {
+    const clock = relojControlado(instanteGT("2026-08-20T16:00:00"));
+    const f = await fixture(clock);
+    try {
+      const cal = new BusinessCalendarService(f.db, clock);
+      const calData = await cal.load(f.orgId);
+      const fechaOp = calData.getFechaOperacion(clock.now());
+      const [ped] = await f.db
+        .insert(pedido)
+        .values({
+          organizacionId: f.orgId,
+          correlativo: 9010,
+          fechaOperacion: fechaOp,
+          fechaEntrega: calData.getFechaEntrega(fechaOp),
+          clienteId: f.cli.id,
+          estado: "CONFIRMADO",
+          origen: "PORTAL",
+        })
+        .returning({ id: pedido.id });
+      await f.db.insert(factura).values({
+        pedidoId: ped!.id,
+        montoCentavos: 50000,
+        numeroDte: `DTE-CTX-${crypto.randomUUID().slice(0, 8)}`,
+      });
+      const ts = Math.floor(instanteGT("2026-08-20T21:00:00").getTime() / 1000);
+      await f.webhooks.inbound({
+        waMessageId: `wamid.${crypto.randomUUID()}`,
+        from: f.tel,
+        timestampUnix: ts,
+        body: "¿Cuánto debo?",
+      });
+      const bandeja = await f.conversaciones.listar(f.actor);
+      const fila = bandeja.find((c) => c.clienteId === f.cli.id)!;
+      expect(fila.pedidoNoche?.correlativo).toBe(9010);
+      expect(fila.saldoCentavos).toBe(50000);
+      expect(fila.facturasPendientes).toBe(1);
+
+      const listarOriginal = f.conversaciones.listar.bind(f.conversaciones);
+      let listarCalls = 0;
+      f.conversaciones.listar = async (actor) => {
+        listarCalls += 1;
+        return listarOriginal(actor);
+      };
+      const detalle = await f.conversaciones.obtener(fila.id, f.actor);
+      expect(listarCalls).toBe(0);
+      expect(detalle.pedidoNoche?.id).toBe(ped!.id);
+      expect(detalle.mensajes.some((m) => m.direction === "INBOUND")).toBe(true);
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("recordatorio encola outbox como en cartera", async () => {
+    const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")));
+    try {
+      const r = await f.conversaciones.encolarRecordatorio(f.cli.id, f.actor);
+      expect(r.encolado).toBe(true);
+      const [row] = await f.db
+        .select()
+        .from(outbox)
+        .where(
+          and(
+            eq(outbox.tipo, TIPO_OUTBOX_RECORDATORIO),
+            eq(outbox.destinatarioId, f.cli.id),
+          ),
+        );
+      expect(row).toBeTruthy();
     } finally {
       await f.client.end({ timeout: 1 });
     }

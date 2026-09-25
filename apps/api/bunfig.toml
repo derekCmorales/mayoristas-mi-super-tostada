@@ -1,4 +1,5 @@
 [test]
+timeout = 15000
 # Mismo preload que en la raíz: bun solo busca bunfig.toml en el cwd, así que
 # `bun test` desde apps/api necesita su propia copia para que la limpieza
 # global corra. Ver apps/api/src/test/preload.ts.

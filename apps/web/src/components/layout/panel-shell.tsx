@@ -108,11 +108,18 @@ function itemActivo(pathname: string, item: NavItem): boolean {
 export function PanelShell({
   title,
   barraFija,
+  fill,
   children,
 }: {
   title: string;
   /** Barra sticky pegada al header del panel (sin hueco del padding de main). */
   barraFija?: ReactNode;
+  /**
+   * El main no scrollea: el hijo llena el viewport y cada sección interna
+   * scrollea por su cuenta. Para bandejas (conversaciones), no para páginas
+   * de documento.
+   */
+  fill?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -558,10 +565,15 @@ export function PanelShell({
         <main
           id={mainId}
           className={cn(
-            "relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain",
+            "relative min-h-0 flex-1",
+            fill
+              ? "flex flex-col overflow-hidden"
+              : "overflow-y-auto overscroll-y-contain",
             barraFija
               ? "pb-[calc(var(--bottombar-height)+2rem+env(safe-area-inset-bottom,0px))] lg:pb-6"
-              : "px-4 py-4 pb-[calc(var(--bottombar-height)+2rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-6",
+              : fill
+                ? "px-4 pt-3 pb-[calc(var(--bottombar-height)+0.5rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-4 lg:pb-4"
+                : "px-4 py-4 pb-[calc(var(--bottombar-height)+2rem+env(safe-area-inset-bottom,0px))] lg:px-6 lg:py-6 lg:pb-6",
           )}
         >
           {barraFija ? (
@@ -574,6 +586,7 @@ export function PanelShell({
           <div
             className={cn(
               "mx-auto w-full max-w-[var(--page-max)]",
+              fill && "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
               barraFija && "px-4 py-4 lg:px-6 lg:py-6",
             )}
           >

@@ -1,4 +1,7 @@
 [test]
-# Hooks globales de la suite: borra las organizaciones que dejan los e2e.
-# Ver apps/api/src/test/preload.ts.
+# E2e contra Postgres comparten una sola base _test. Con API+web+watch en
+# dev:all, el default de 5 s dispara falsos timeouts en entregas con FOR UPDATE.
+timeout = 15000
+# El tope de archivos en paralelo (--max-concurrency 8) vive en el script
+# `test` y en dev-all. bunfig no tiene esa llave.
 preload = ["./apps/api/src/test/preload.ts"]

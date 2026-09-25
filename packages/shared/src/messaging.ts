@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { formatearFechaLarga } from "./calendar";
 import { centavosSchema, formatearCentavos } from "./money";
+import { PEDIDO_ESTADOS } from "./estados";
 
 /** Código de Meta cuando se envía texto libre fuera de la ventana de 24 h. */
 export const META_ERROR_VENTANA_CERRADA = "131047";
@@ -12,7 +13,7 @@ export const META_PARAM_MAX_CHARS = 1024;
 export const META_TEXTO_MAX_CHARS = 4096;
 
 export const MENSAJE_VENTANA_WA_CERRADA =
-  "Ventana de 24 h cerrada. Solo plantillas aprobadas.";
+  "Este restaurante no ha escrito recientemente. Solo puede mandar un aviso ya armado.";
 export const MENSAJE_PREVIEW_NO_COINCIDE =
   "El preview no coincide con el mensaje a enviar.";
 export const MENSAJE_PLANTILLA_NO_APROBADA =
@@ -27,6 +28,22 @@ export const PLANTILLA_PROPOSITOS = [
   "CONSOLIDADO",
 ] as const;
 export type PlantillaProposito = (typeof PLANTILLA_PROPOSITOS)[number];
+
+/** Copy operacional de los cuatro avisos automáticos (sin nombres Meta). */
+export const PROPOSITO_ETIQUETA: Record<PlantillaProposito, string> = {
+  INVITACION: "Aviso de invitación a pedir",
+  CONFIRMACION: "Aviso de confirmación de pedido",
+  ESTADO_CUENTA: "Aviso de estado de cuenta",
+  CONSOLIDADO: "Aviso de pedido consolidado",
+};
+
+export const pedidoNocheSchema = z.object({
+  id: z.string().uuid(),
+  correlativo: z.number().int().positive(),
+  estado: z.enum(PEDIDO_ESTADOS),
+  fechaOperacion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type PedidoNoche = z.infer<typeof pedidoNocheSchema>;
 
 export const TIPO_OUTBOX_PEDIDO_CONFIRMADO = "PedidoConfirmado";
 export const TIPO_OUTBOX_INVITACION = "InvitacionDiaria";
@@ -256,6 +273,7 @@ export const mensajePublicoSchema = z.object({
   direction: z.enum(MENSAJE_DIRECCIONES),
   tipo: z.string(),
   templateName: z.string().nullable(),
+  proposito: z.enum(PLANTILLA_PROPOSITOS).nullable().optional(),
   bodyRenderizado: z.string().nullable(),
   status: z.string().nullable(),
   errorCode: z.string().nullable(),
@@ -275,11 +293,16 @@ export const conversacionBandejaSchema = z.object({
   noLeidos: z.number().int().nonnegative(),
   ultimoCuerpo: z.string().nullable(),
   ultimoAt: z.string().nullable(),
+  horarioEntregaFijo: z.string().nullable(),
+  notasPermanentes: z.string().nullable(),
+  saldoCentavos: centavosSchema,
+  facturasPendientes: z.number().int().nonnegative(),
+  pedidoNoche: pedidoNocheSchema.nullable(),
+  fechaOperacionViva: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 });
 export type ConversacionBandeja = z.infer<typeof conversacionBandejaSchema>;
 
 export const conversacionDetalleSchema = conversacionBandejaSchema.extend({
-  horarioEntregaFijo: z.string().nullable(),
   mensajes: z.array(mensajePublicoSchema),
 });
 export type ConversacionDetalle = z.infer<typeof conversacionDetalleSchema>;

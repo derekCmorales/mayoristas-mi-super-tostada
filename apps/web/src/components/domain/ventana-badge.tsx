@@ -72,10 +72,10 @@ export function etiquetaVentanaBadge({
   } else if (tipo === "whatsapp") {
     etiqueta =
       viva && !compacto
-        ? `24 h · ${formatearRestante(restante)}`
+        ? `Puede responder · queda ${formatearRestante(restante)}`
         : viva
-          ? "24 h"
-          : "24 h cerrada";
+          ? "Puede responder"
+          : "Solo avisos armados";
   } else if (!reabiertaPedido && viva && cierraAt && restante > 0) {
     etiqueta = compacto
       ? "Ventana abierta"

@@ -51,11 +51,10 @@ function ConversacionesScreen() {
   const conv = D.conversaciones.find((c) => c.id === sel);
   const abierta = conv.ventanaMs > 0;
   const c = cliente(conv.clienteId);
-  const [plantilla, setPlantilla] = React.useState('estado_cuenta_v3');
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-4)', alignItems: 'start' }}>
-      <Card flush padding="md" title="Conversaciones" subtitle="Ventana de 24 h de Meta">
+      <Card flush padding="md" title="Conversaciones" subtitle="Excepciones de restaurantes">
         <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
           {D.conversaciones.map((v) => {
             const activo = v.id === sel;
@@ -78,11 +77,11 @@ function ConversacionesScreen() {
       <Card flush padding="md" title={c.nombre} subtitle={`${c.tel} · entrega ${c.entrega}`}
         actions={<VentanaBadge abierta={abierta} tipo="whatsapp" expiraEn={conv.ventanaMs} />}>
         <div style={{ display: 'grid', gap: 'var(--space-4)', padding: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)', background: 'var(--cream-100)' }}>
-          <MensajePreview tipo="plantilla" plantilla="recordatorio_pedido" hora="20:55" estado="leido"
+          <MensajePreview tipo="plantilla" plantilla="Aviso de invitación a pedir" hora="20:55" estado="leido"
             cuerpo={'Buenas noches. Ya está abierta la toma de pedidos para mañana jueves 20. Puede responder aquí o abrir su portal.'} />
-          <div style={{ justifySelf: 'end', maxWidth: 380, padding: 'var(--space-3)', background: 'var(--green-800)', color: '#fff', borderRadius: '14px 14px 4px 14px', fontSize: 'var(--text-sm)' }}>
+          <div style={{ justifySelf: 'start', maxWidth: 380, padding: 'var(--space-3)', background: 'var(--green-50)', border: '1px solid var(--green-200)', color: 'var(--text-primary)', borderRadius: '14px 14px 14px 4px', fontSize: 'var(--text-sm)' }}>
             Mañana igual que ayer, gracias
-            <div style={{ marginTop: 4, textAlign: 'right', fontSize: 'var(--text-3xs)', color: 'var(--green-200)' }}>21:02 · entrante</div>
+            <div style={{ marginTop: 4, textAlign: 'right', fontSize: 'var(--text-3xs)', color: 'var(--text-muted)' }}>21:02</div>
           </div>
           <MensajePreview tipo="libre" hora="21:05" estado="entregado"
             cuerpo={'Perfecto, Doña Marta. Le dejo anotado:\n• Tortilla grande 40 lb\n• Tostada fina 12 bolsas\n• Papalinas 6 bolsas\nTotal Q 1,240.50, entrega 08:30.'} />
@@ -91,22 +90,17 @@ function ConversacionesScreen() {
         <div style={{ padding: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)', background: 'var(--white)' }}>
           {abierta ? (
             <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-              <Textarea rows={2} placeholder="Escribe el mensaje…" hint="Ventana abierta: puedes redactar libre con desglose completo." />
-              <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Button size="sm" variant="ghost"><Icon name="sparkles" size={15} />Redactar con IA</Button>
+              <Textarea rows={2} placeholder="Escriba la respuesta…" hint="El restaurante escribió recientemente. Puede contestar en texto libre." />
+              <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <Button size="sm" variant="primary"><Icon name="send" size={15} />Enviar</Button>
               </div>
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-              <Toast tone="aviso" title="Ventana de 24 h cerrada" description="Solo se pueden enviar plantillas aprobadas. Meta responde 131047 a cualquier texto libre." style={{ maxWidth: '100%' }} />
-              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end' }}>
-                <Select label="Plantilla aprobada" value={plantilla} onChange={(e) => setPlantilla(e.target.value)} style={{ minWidth: 260 }}
-                  options={[{ value: 'estado_cuenta_v3', label: 'estado_cuenta_v3 · utility' }, { value: 'recordatorio_pedido', label: 'recordatorio_pedido · utility' }]} />
-                <Button size="md" variant="primary"><Icon name="send" size={15} />Enviar plantilla</Button>
-              </div>
-              <MensajePreview tipo="plantilla" plantilla={plantilla} adjunto="estado-cuenta-agosto.pdf" hora="ahora"
-                cuerpo={'Buenas noches, Doña Marta. Le comparto su estado de cuenta al 19 de agosto: 3 facturas pendientes por Q 1,865.00.'} />
+              <Toast tone="aviso" title="Solo avisos armados" description="Este restaurante no ha escrito recientemente. Solo puede mandar un aviso ya definido." style={{ maxWidth: '100%' }} />
+              <Button size="md" variant="primary"><Icon name="send" size={15} />Mandar estado de cuenta</Button>
+              <MensajePreview tipo="plantilla" plantilla="Aviso de estado de cuenta" adjunto="estado-cuenta-agosto.pdf" hora="ahora"
+                cuerpo={'Le compartimos su estado de cuenta: 3 facturas pendientes por Q 1,865.00.'} />
             </div>
           )}
         </div>
