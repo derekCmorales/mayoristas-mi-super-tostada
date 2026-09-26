@@ -442,6 +442,9 @@ export const plantillaWa = pgTable(
     language: text("language").notNull(),
     status: text("status").notNull(),
     componentes: jsonb("componentes"),
+    metaTemplateId: text("meta_template_id"),
+    motivoRechazo: text("motivo_rechazo"),
+    calidad: text("calidad"),
     sincronizadoAt: timestamp("sincronizado_at", {
       withTimezone: true,
       mode: "date",

@@ -1,7 +1,7 @@
 import { Inject, Module, type OnModuleInit } from "@nestjs/common";
 import { organizacion } from "@misupertostada/db";
 import type { Clock } from "@misupertostada/shared";
-import { loadEnv } from "../../config/env";
+import { loadEnv, metaWhatsAppConfigured } from "../../config/env";
 import { CLOCK, DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
 import { OutboxDispatcherRegistry } from "../shared/outbox.dispatcher";
@@ -22,11 +22,16 @@ import { ConversacionesController } from "./conversaciones.controller";
 import { MessagingDispatcher } from "./messaging.dispatcher";
 import { InvitacionJob } from "./invitacion.job";
 import { ConexionWabaService } from "./conexion.service";
+import { META_GESTION_PORT } from "./meta-gestion.port";
+import { FakeMetaGestionAdapter } from "./fake.meta-gestion";
+import { GraphMetaGestionAdapter } from "./graph.meta-gestion";
+import { MetaGestionService } from "./meta-gestion.service";
+import { MetaGestionController } from "./meta-gestion.controller";
 
 export const COLA_INVITACION = "mensajeria.invitacion";
 
 @Module({
-  controllers: [WebhooksController, ConversacionesController],
+  controllers: [WebhooksController, ConversacionesController, MetaGestionController],
   providers: [
     FakeWhatsAppAdapter,
     {
@@ -48,6 +53,18 @@ export const COLA_INVITACION = "mensajeria.invitacion";
         );
       },
     },
+    FakeMetaGestionAdapter,
+    {
+      provide: META_GESTION_PORT,
+      inject: [FakeMetaGestionAdapter],
+      useFactory: (fake: FakeMetaGestionAdapter) => {
+        const env = loadEnv();
+        return metaWhatsAppConfigured(env)
+          ? new GraphMetaGestionAdapter(env.META_GRAPH_VERSION, env.META_APP_ID)
+          : fake;
+      },
+    },
+    MetaGestionService,
     WebhookService,
     PlantillaService,
     ConversacionService,

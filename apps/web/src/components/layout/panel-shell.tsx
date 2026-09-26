@@ -25,7 +25,6 @@ import {
   type ActorPublico,
   type CalendarioAhora,
 } from "@misupertostada/shared";
-import { etiquetaDiaSemanaCorto } from "@/lib/fecha-ui";
 import {
   esSoloLectura,
   repartirNavMovil,
@@ -308,8 +307,8 @@ export function PanelShell({
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-[var(--z-sticky)] flex min-h-topbar min-w-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-tinta-200/50 bg-blanco/80 backdrop-blur-md px-3 py-2 sm:px-4 lg:px-5 shadow-sm">
-          <div className="min-w-0 max-w-full shrink">
+        <header className="sticky top-0 z-[var(--z-sticky)] flex min-h-topbar min-w-0 flex-wrap items-center gap-2 border-b border-tinta-200/50 bg-blanco/80 backdrop-blur-md px-3 py-2 sm:gap-3 sm:px-4 lg:px-6 shadow-sm">
+          <div className="min-w-0 max-w-full flex-1 lg:flex-none">
             <h1 className="truncate text-sm font-semibold text-tinta-900 lg:text-lg">
               {title}
             </h1>
@@ -331,7 +330,7 @@ export function PanelShell({
               Solo lectura
             </span>
           )}
-          <div className="ml-auto flex min-w-0 max-w-full flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 max-w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
             {calendario.data ? <EjesFecha cal={calendario.data} layout="horizontal" /> : null}
             {aviso ? (
               <span
@@ -360,7 +359,7 @@ export function PanelShell({
                   diaCerrado={calendario.data.diaEstado === "CERRADO"}
                   cierraAt={calendario.data.cierraAt}
                   proximaAperturaAt={calendario.data.proximaAperturaAt}
-                  className="hidden max-w-full lg:inline-flex"
+                  className="hidden lg:inline-flex"
                 />
                 <Popover open={estadoAbierto} onOpenChange={abrirEstado} modal>
                   <PopoverTrigger asChild>
@@ -625,15 +624,12 @@ function EjesFecha({
 }) {
   // La entrega solo se anota cuando no cae el mismo día que la operación
   // (sábado con carga en planta, feriados): el resto del tiempo es ruido.
-  const entregaDistinta = cal.fechaEntregaCaptura !== cal.fechaOperacionCaptura;
-  const nota = entregaDistinta
-    ? `Entrega: ${formatearFechaLarga(cal.fechaEntregaCaptura)}`
-    : cal.esSabado
-      ? "Carga en planta"
-      : undefined;
-  const notaCorta = entregaDistinta
-    ? `Entrega ${etiquetaDiaSemanaCorto(cal.fechaEntregaCaptura)}`
-    : nota;
+  const nota =
+    cal.fechaEntregaCaptura !== cal.fechaOperacionCaptura
+      ? `Entrega: ${formatearFechaLarga(cal.fechaEntregaCaptura)}`
+      : cal.esSabado
+        ? "Carga en planta"
+        : undefined;
 
   if (layout === "stacked") {
     return (
@@ -659,25 +655,13 @@ function EjesFecha({
   }
 
   return (
-    <dl className="hidden max-w-full min-w-0 flex-wrap items-stretch divide-[var(--border-subtle)] overflow-hidden rounded-campo border border-[var(--border-subtle)] bg-[var(--surface-page)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:flex">
+    <dl className="hidden min-w-0 items-center divide-x divide-[var(--border-subtle)] rounded-campo border border-[var(--border-subtle)] bg-[var(--surface-page)] px-1.5 py-1 sm:flex shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+      <Eje label="Captura de pedidos" iso={cal.fechaOperacionCaptura} nota={nota} />
+      <Eje label="En reparto hoy" iso={cal.fechaOperacionEnCurso} />
       <Eje
-        compact
-        label="Captura"
-        iso={cal.fechaOperacionCaptura}
-        nota={notaCorta}
-        titleNota={nota}
-      />
-      <Eje
-        compact
-        label="Reparto hoy"
-        iso={cal.fechaOperacionEnCurso}
-        className="border-l border-[var(--border-subtle)]"
-      />
-      <Eje
-        compact
-        label="Calendario"
+        label="Día de calendario"
         iso={cal.hoyCivil}
-        className="hidden border-l border-[var(--border-subtle)] xl:flex"
+        className="hidden md:flex"
       />
     </dl>
   );
@@ -687,61 +671,30 @@ function Eje({
   label,
   iso,
   nota,
-  titleNota,
-  compact = false,
   className,
 }: {
   label: string;
   iso: string;
   nota?: string;
-  titleNota?: string;
-  /** Barra del panel: fecha corta para que los tres ejes quepan junto al sidebar. */
-  compact?: boolean;
   className?: string;
 }) {
   const fechaLarga = formatearFechaLarga(iso);
-  const fechaVisible = compact ? etiquetaDiaSemanaCorto(iso) : fechaLarga;
   return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-col justify-center text-left",
-        compact ? "max-w-[11.5rem] px-2.5 py-1" : "px-3.5 py-0.5",
-        className,
-      )}
-    >
-      <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-tinta-500 leading-none">
+    <div className={cn("flex flex-col justify-center px-3.5 py-0.5 text-left", className)}>
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-tinta-500 leading-none">
         {label}
       </dt>
       <dd
-        className={cn(
-          "mt-1 font-semibold leading-none text-tinta-900",
-          compact
-            ? "truncate text-xs tabular-nums"
-            : "flex items-center gap-2 text-xs tabular-nums",
-        )}
+        className="mt-1 flex items-center gap-2 text-xs font-semibold leading-none tabular-nums text-tinta-900"
         title={fechaLarga}
       >
-        {compact ? (
-          fechaVisible
-        ) : (
-          <>
-            <span>{fechaVisible}</span>
-            {nota ? (
-              <span className="rounded-pill border border-[var(--green-200)] bg-marca-soft px-2 py-0.5 text-[11px] font-semibold text-marca">
-                {nota}
-              </span>
-            ) : null}
-          </>
-        )}
+        <span>{fechaLarga}</span>
+        {nota ? (
+          <span className="rounded-pill border border-[var(--green-200)] bg-marca-soft px-2 py-0.5 text-[11px] font-semibold text-marca">
+            {nota}
+          </span>
+        ) : null}
       </dd>
-      {compact && nota ? (
-        <dd
-          className="mt-1 truncate text-[11px] font-semibold leading-none text-marca"
-          title={titleNota ?? nota}
-        >
-          {nota}
-        </dd>
-      ) : null}
     </div>
   );
 }

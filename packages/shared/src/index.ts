@@ -486,3 +486,4 @@ export {
   type PedidoNoche,
   type RecordatorioCobroRequest,
 } from "./messaging";
+export * from "./meta-gestion";

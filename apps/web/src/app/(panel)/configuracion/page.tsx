@@ -4,13 +4,18 @@ import { Card } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Clock, History, Users } from "lucide-react";
-import { tienePermiso, type ActorPublico } from "@misupertostada/shared";
+import { ChevronLeft, ChevronRight, Clock, History, MessageSquareText, Users } from "lucide-react";
+import {
+  tienePermiso,
+  type ActorPublico,
+  type PermisoCodigo,
+} from "@misupertostada/shared";
 import { api, ApiError } from "@/lib/api";
 import { PanelShell } from "@/components/layout/panel-shell";
 import { UsuariosCard } from "@/components/configuracion/usuarios-card";
 import { HistorialCard } from "@/components/configuracion/historial-card";
 import { VentanaCard } from "@/components/configuracion/ventana-card";
+import { MetaPlantillasCard } from "@/components/configuracion/meta-plantillas-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 
@@ -33,7 +38,20 @@ const SECCIONES = [
     subtitle: "Horario semanal del portal. Los de madrugada son del día que abrió.",
     icon: Clock,
   },
-];
+  {
+    id: "meta" as const,
+    title: "Plantillas de Meta",
+    subtitle: "Crear, revisar y retirar plantillas de WhatsApp, y ver cuáles usan los avisos.",
+    icon: MessageSquareText,
+    permiso: "mensajeria.conectar" as PermisoCodigo,
+  },
+] satisfies ReadonlyArray<{
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: typeof Users;
+  permiso?: PermisoCodigo;
+}>;
 
 type SeccionId = (typeof SECCIONES)[number]["id"];
 
@@ -53,8 +71,6 @@ function ConfiguracionVista() {
   const router = useRouter();
   const search = useSearchParams();
   const raw = search.get("seccion");
-  const seccion = esSeccion(raw) ? raw : null;
-  const actual = SECCIONES.find((s) => s.id === seccion);
 
   const me = useQuery({
     queryKey: ["auth", "me"],
@@ -74,6 +90,14 @@ function ConfiguracionVista() {
 
   if (!ok) return null;
 
+  const permisos = me.data?.usuario.permisos ?? [];
+  const visibles = SECCIONES.filter((s) => {
+    const permiso = "permiso" in s ? s.permiso : undefined;
+    return !permiso || tienePermiso(permisos, permiso);
+  });
+  const seccion = esSeccion(raw) ? raw : null;
+  const actual = visibles.find((s) => s.id === seccion);
+
   if (actual) {
     return (
       <PanelShell title={actual.title}>
@@ -89,6 +113,7 @@ function ConfiguracionVista() {
           {seccion === "usuarios" ? <UsuariosCard /> : null}
           {seccion === "historial" ? <HistorialCard /> : null}
           {seccion === "ventana" ? <VentanaCard /> : null}
+          {seccion === "meta" ? <MetaPlantillasCard /> : null}
         </div>
       </PanelShell>
     );
@@ -103,7 +128,7 @@ function ConfiguracionVista() {
         </p>
 
         <ul className="grid gap-3">
-          {SECCIONES.map((item) => {
+          {visibles.map((item) => {
             const Icon = item.icon;
             return (
               <li key={item.id}>

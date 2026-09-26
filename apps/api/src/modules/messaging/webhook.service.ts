@@ -31,12 +31,16 @@ type MetaChangeValue = {
   }>;
   message_template_name?: string;
   message_template_language?: string;
+  message_template_id?: number | string;
   event?: string;
+  reason?: string;
 };
 
 export type MetaPayload = {
   object?: string;
   entry?: Array<{
+    /** WABA que origina el evento: separa tenants en un tech provider. */
+    id?: string;
     changes?: Array<{ field?: string; value?: MetaChangeValue }>;
   }>;
 };
@@ -91,6 +95,10 @@ export class WebhookService {
               value.message_template_language ?? "es",
               value.event,
               this.clock.now(),
+              {
+                wabaId: entry.id,
+                motivo: value.reason && value.reason !== "NONE" ? value.reason : null,
+              },
             );
           }
           continue;

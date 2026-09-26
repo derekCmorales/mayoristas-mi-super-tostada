@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import {
   conexionWaba,
   plantillaProposito,
@@ -70,7 +70,12 @@ export class PlantillaService {
     const rows = await this.db
       .select()
       .from(plantillaWa)
-      .where(eq(plantillaWa.organizacionId, organizacionId));
+      .where(
+        and(
+          eq(plantillaWa.organizacionId, organizacionId),
+          ne(plantillaWa.status, "DELETED"),
+        ),
+      );
     const mapas = await this.db
       .select()
       .from(plantillaProposito)
@@ -205,16 +210,35 @@ export class PlantillaService {
     }
   }
 
+  /**
+   * Webhook `message_template_status_update`. Con varios negocios conectados
+   * al mismo tech provider dos WABA pueden tener plantillas con el mismo
+   * nombre: si el evento trae el WABA, solo se toca la organización dueña.
+   */
   async actualizarStatus(
     name: string,
     language: string,
     status: string,
     now: Date,
+    opts: { wabaId?: string; motivo?: string | null } = {},
   ): Promise<void> {
+    const filtros = [eq(plantillaWa.name, name), eq(plantillaWa.language, language)];
+    if (opts.wabaId) {
+      const [conn] = await this.db
+        .select({ organizacionId: conexionWaba.organizacionId })
+        .from(conexionWaba)
+        .where(eq(conexionWaba.wabaId, opts.wabaId))
+        .limit(1);
+      if (conn) filtros.push(eq(plantillaWa.organizacionId, conn.organizacionId));
+    }
     await this.db
       .update(plantillaWa)
-      .set({ status, sincronizadoAt: now })
-      .where(and(eq(plantillaWa.name, name), eq(plantillaWa.language, language)));
+      .set({
+        status,
+        sincronizadoAt: now,
+        ...(opts.motivo !== undefined ? { motivoRechazo: opts.motivo } : {}),
+      })
+      .where(and(...filtros));
   }
 
   async ensureFakeSeed(organizacionId: string, now: Date): Promise<void> {
