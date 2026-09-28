@@ -34,6 +34,7 @@ import {
 } from "@misupertostada/shared";
 import { api, ApiError } from "@/lib/api";
 import { buildPedidosHref } from "@/lib/pedido-vista";
+import { enlacePortal } from "@/lib/portal-vista";
 import { toastFromError, toastSuccess } from "@/lib/toast";
 import { subirFotoCliente } from "@/lib/upload-asset";
 import { PanelShell } from "@/components/layout/panel-shell";
@@ -61,7 +62,7 @@ export default function ClienteFichaPage() {
   const id = params.id;
   const qc = useQueryClient();
   const [seccion, setSeccion] = useState<Seccion>("operacion");
-  const [tokenVisible, setTokenVisible] = useState<string | null>(null);
+  const [enlaceVisible, setEnlaceVisible] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fotoFile, setFotoFile] = useState<File | null>(null);
   const [clearFoto, setClearFoto] = useState(false);
@@ -103,11 +104,11 @@ export default function ClienteFichaPage() {
     mutationFn: () =>
       api<{ token: string }>(`/clientes/${id}/token-portal`, { method: "POST" }),
     onSuccess: (data) => {
-      setTokenVisible(data.token);
+      setEnlaceVisible(enlacePortal(window.location.origin, data.token));
       qc.invalidateQueries({ queryKey: ["clientes", id] });
     },
     onError: (err) =>
-      setError(err instanceof ApiError ? err.message : "No se pudo generar el token"),
+      setError(err instanceof ApiError ? err.message : "No se pudo generar el enlace"),
   });
 
   const desactivar = useMutation({
@@ -262,8 +263,8 @@ export default function ClienteFichaPage() {
                 {rotar.isPending
                   ? "Un momento…"
                   : c.tieneTokenPortal
-                    ? "Rotar token"
-                    : "Generar token"}
+                    ? "Nuevo enlace del portal"
+                    : "Generar enlace del portal"}
               </Button>
             )}
           </div>
@@ -675,37 +676,47 @@ export default function ClienteFichaPage() {
       </div>
 
       <Modal.Backdrop
-        isOpen={tokenVisible != null}
+        isOpen={enlaceVisible != null}
         onOpenChange={(open) => {
-          if (!open) setTokenVisible(null);
+          if (!open) setEnlaceVisible(null);
         }}
       >
         <Modal.Container size="md">
           <Modal.Dialog>
             <Modal.CloseTrigger />
             <Modal.Header>
-              <Modal.Heading>Token del portal</Modal.Heading>
+              <Modal.Heading>Enlace del portal</Modal.Heading>
               <p className="text-sm text-tinta-500">
-                Cópielo ahora. No se vuelve a mostrar; si lo pierde, ruede uno
-                nuevo.
+                Cópielo ahora y envíeselo al cliente. No se vuelve a mostrar; si
+                lo pierde, genere uno nuevo.
               </p>
             </Modal.Header>
             <Modal.Body>
               <p className="break-all rounded-campo bg-tinta-50 p-3 font-mono text-sm">
-                {tokenVisible}
+                {enlaceVisible}
               </p>
             </Modal.Body>
-            <Modal.Footer>
+            <Modal.Footer className="flex-wrap">
               <Button
-                variant="primary"
+                variant="secondary"
                 onPress={() => {
-                  if (tokenVisible) {
-                    void navigator.clipboard.writeText(tokenVisible);
-                    toastSuccess("Token copiado");
+                  if (enlaceVisible) {
+                    window.open(enlaceVisible, "_blank", "noopener,noreferrer");
                   }
                 }}
               >
-                Copiar token
+                Abrir portal
+              </Button>
+              <Button
+                variant="primary"
+                onPress={() => {
+                  if (enlaceVisible) {
+                    void navigator.clipboard.writeText(enlaceVisible);
+                    toastSuccess("Enlace copiado");
+                  }
+                }}
+              >
+                Copiar enlace
               </Button>
             </Modal.Footer>
           </Modal.Dialog>
@@ -863,7 +874,7 @@ function FichaForm({
       )}
       {cliente.tieneTokenPortal && (
         <p className="text-xs text-tinta-500 md:col-span-2">
-          Ya hay un token de portal activo. Rotarlo invalida el anterior.
+          Ya hay un enlace de portal activo. Generar uno nuevo invalida el anterior.
         </p>
       )}
     </form>

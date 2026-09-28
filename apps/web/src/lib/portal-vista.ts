@@ -311,3 +311,10 @@ export function copyLosetaBonos(
 export function assetSrcPathPortal(token: string, assetId: string): string {
   return `/p/${encodeURIComponent(token)}/assets/${assetId}`;
 }
+
+/** Enlace completo del portal para compartir con el cliente. El portal lo sirve
+    la misma app que el panel, así que el origen del panel es el del portal
+    (en producción, `https://pedidos.misupertostada.com`). */
+export function enlacePortal(origen: string, token: string): string {
+  return `${origen.replace(/\/+$/, "")}/p/${encodeURIComponent(token)}`;
+}

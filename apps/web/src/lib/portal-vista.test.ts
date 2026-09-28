@@ -18,6 +18,7 @@ import {
   vistaPedir,
   cantidadesBonoDesdePedido,
   lineasPedidoCount,
+  enlacePortal,
 } from "./portal-vista";
 
 const producto = (
@@ -390,6 +391,20 @@ describe("vistaPedir", () => {
     expect(vistaPedir({ pedidoAbierto: null, editando: false })).toBe("catalogo");
     expect(vistaPedir({ pedidoAbierto: pedido, editando: false })).toBe(
       "confirmacion",
+    );
+  });
+});
+
+describe("enlacePortal", () => {
+  test("arma la URL completa sobre el origen del panel", () => {
+    expect(enlacePortal("https://pedidos.misupertostada.com", "abc_123")).toBe(
+      "https://pedidos.misupertostada.com/p/abc_123",
+    );
+  });
+
+  test("tolera slash final en el origen y escapa el token", () => {
+    expect(enlacePortal("http://localhost:3000/", "a/b")).toBe(
+      "http://localhost:3000/p/a%2Fb",
     );
   });
 });
