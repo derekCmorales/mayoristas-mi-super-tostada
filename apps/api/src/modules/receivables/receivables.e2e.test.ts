@@ -466,6 +466,135 @@ describe.skipIf(!listo)("E5 cobranza", () => {
     }
   });
 
+  test("un día de calle pasado sin marcar: aparece en atrasados, se ve por fecha y se entrega tarde", async () => {
+    // Jueves 20 a las 22:00: dos pedidos de la operación del jueves, que
+    // salen el viernes 21. Tony marca uno y se le olvida el otro.
+    const clock = relojControlado(instanteGT("2026-08-20T22:00:00"));
+    const f = await fixture(clock);
+    try {
+      const prod = await f.productos.crear(
+        {
+          sku: `ATR-${crypto.randomUUID().slice(0, 6)}`,
+          nombreCanonico: "Tortillas #16",
+          familia: "TORTILLA",
+          unidadMedida: "LIBRA",
+          puntoCarga: "DEMOCRACIA",
+        },
+        f.actor,
+      );
+      const cli = await f.clientes.crear(
+        { nombre: `Atrasado ${crypto.randomUUID().slice(0, 6)}` },
+        f.actor,
+      );
+      await f.ligas.upsert(cli.id, prod.id, { precioCentavos: 1000 }, f.actor);
+      const marcado = await f.pedidos.crearManual(
+        { clienteId: cli.id, items: [{ productoId: prod.id, cantidad: 10 }] },
+        f.actor,
+      );
+      const olvidado = await f.pedidos.crearManual(
+        { clienteId: cli.id, items: [{ productoId: prod.id, cantidad: 7 }] },
+        f.actor,
+      );
+      await f.cierre.cerrar({}, f.actor);
+
+      clock.set(instanteGT("2026-08-21T10:00:00"));
+      await f.entregas.entregar(
+        { idempotencyKey: crypto.randomUUID(), pedidoId: marcado.id },
+        f.actorReparto,
+      );
+      const enSuDia = await f.entregas.atrasados(f.actor);
+      expect(enSuDia.pendientes).toBe(0);
+      expect(enSuDia.dias).toEqual([]);
+
+      // Viernes 21 a las 22:00: la operación del viernes sale el sábado 22.
+      clock.set(instanteGT("2026-08-21T22:00:00"));
+      const deHoy = await f.pedidos.crearManual(
+        { clienteId: cli.id, items: [{ productoId: prod.id, cantidad: 3 }] },
+        f.actor,
+      );
+      await f.cierre.cerrar({}, f.actor);
+
+      // Sábado 22 a las 00:22 —la hora del reporte—: la ruta sin fecha ya
+      // es la del sábado y el pedido olvidado del viernes no aparece ahí.
+      clock.set(instanteGT("2026-08-22T00:22:00"));
+      const rutaHoy = await f.entregas.ruta({}, f.actorReparto);
+      expect(rutaHoy.fechaEntrega).toBe("2026-08-22");
+      expect(rutaHoy.paradas.map((p) => p.pedidoId)).toEqual([deHoy.id]);
+
+      // Pero no se perdió: el conteo lo señala con su monto, y el de hoy
+      // —que todavía se puede repartir— no cuenta como atrasado.
+      const atrasados = await f.entregas.atrasados(f.actorReparto);
+      expect(atrasados.hoy).toBe("2026-08-22");
+      expect(atrasados.pendientes).toBe(1);
+      expect(atrasados.montoEstimadoCentavos).toBe(7000);
+      expect(atrasados.dias).toEqual([
+        { fechaEntrega: "2026-08-21", pendientes: 1, montoEstimadoCentavos: 7000 },
+      ]);
+
+      // La ruta del viernes, pedida por fecha, trae los dos: el entregado
+      // como referencia y el olvidado listo para marcar.
+      const rutaViernes = await f.entregas.ruta(
+        { fechaEntrega: "2026-08-21" },
+        f.actorReparto,
+      );
+      expect(rutaViernes.fechaEntrega).toBe("2026-08-21");
+      const estados = new Map(
+        rutaViernes.paradas.map((p) => [p.pedidoId, p.estado]),
+      );
+      expect(estados.get(marcado.id)).toBe("ENTREGADO");
+      expect(estados.get(olvidado.id)).toBe("EN_PRODUCCION");
+      expect(estados.has(deHoy.id)).toBe(false);
+
+      // Marcarlo tarde crea la factura con el snapshot de precios y lo saca
+      // del conteo: a partir de aquí ya se le puede cobrar.
+      const tarde = await f.entregas.entregar(
+        { idempotencyKey: crypto.randomUUID(), pedidoId: olvidado.id },
+        f.actorReparto,
+      );
+      expect(tarde.estado).toBe("ENTREGADO");
+      expect(tarde.factura.montoCentavos).toBe(7000);
+      expect(tarde.factura.estado).toBe("PENDIENTE");
+      const despues = await f.entregas.atrasados(f.actorReparto);
+      expect(despues.pendientes).toBe(0);
+      expect(despues.dias).toEqual([]);
+
+      // El historial distingue la entrega tardía de la puntual.
+      const audits = await f.db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.accion, "pedidos.entregar"));
+      const auditTarde = audits.find((a) => a.entidadId === olvidado.id);
+      expect(auditTarde?.despues).toMatchObject({
+        fechaEntrega: "2026-08-21",
+        marcadaEl: "2026-08-22",
+        entregaTardia: true,
+      });
+      const auditPuntual = audits.find((a) => a.entidadId === marcado.id);
+      expect(auditPuntual?.despues).toMatchObject({
+        fechaEntrega: "2026-08-21",
+        marcadaEl: "2026-08-21",
+        entregaTardia: false,
+      });
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("atrasados no cruza organizaciones", async () => {
+    const clock = relojControlado(instanteGT("2026-08-20T22:00:00"));
+    const a = await fixture(clock);
+    const b = await fixture(clock);
+    try {
+      await catalogo(a, { precioCentavos: 1000, cantidad: 2 });
+      clock.set(instanteGT("2026-08-24T09:00:00"));
+      expect((await a.entregas.atrasados(a.actorReparto)).pendientes).toBe(1);
+      expect((await b.entregas.atrasados(b.actorReparto)).pendientes).toBe(0);
+    } finally {
+      await a.client.end({ timeout: 1 });
+      await b.client.end({ timeout: 1 });
+    }
+  });
+
   test("F-502 REPARTO no captura DTE; TIENDA sí; duplicado 409", async () => {
     const f = await fixture(relojControlado(instanteGT("2026-08-20T22:00:00")));
     try {

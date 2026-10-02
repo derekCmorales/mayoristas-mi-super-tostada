@@ -353,6 +353,29 @@ export const rutaRepartoSchema = z.object({
 });
 export type RutaReparto = z.infer<typeof rutaRepartoSchema>;
 
+/**
+ * Un día de calle que ya pasó con pedidos que nunca se marcaron entregados.
+ * Siguen en `EN_PRODUCCION`, sin factura: no cuentan en la cartera ni se les
+ * puede registrar un cobro hasta que alguien los marque.
+ */
+export const diaRepartoAtrasadoSchema = z.object({
+  fechaEntrega: fechaCalendarioSchema,
+  pendientes: z.number().int().positive(),
+  /** Sobre lo pedido; la factura sale de lo que se marque entregado. */
+  montoEstimadoCentavos: centavosSchema,
+});
+export type DiaRepartoAtrasado = z.infer<typeof diaRepartoAtrasadoSchema>;
+
+export const repartoAtrasadosSchema = z.object({
+  /** Día de calle de referencia: todo lo anterior a esta fecha está atrasado. */
+  hoy: fechaCalendarioSchema,
+  pendientes: z.number().int().nonnegative(),
+  montoEstimadoCentavos: centavosSchema,
+  /** Del más reciente al más viejo. */
+  dias: z.array(diaRepartoAtrasadoSchema),
+});
+export type RepartoAtrasados = z.infer<typeof repartoAtrasadosSchema>;
+
 export const facturaCarteraSchema = facturaPublicaSchema.extend({
   correlativo: z.number().int().positive(),
   clienteId: z.string().uuid(),

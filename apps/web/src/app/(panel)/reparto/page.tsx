@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, startTransition, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
@@ -19,6 +20,7 @@ import {
   type ActorPublico,
   type CalendarioAhora,
   type FilaCola,
+  type RepartoAtrasados,
   type RutaParada,
   type RutaReparto,
 } from "@misupertostada/shared";
@@ -42,6 +44,15 @@ import { avisoReabierto } from "@/lib/reabierto-vista";
 import { ClienteAvatar } from "@/components/catalog/cliente-avatar";
 import { toastFromError, toastSuccess } from "@/lib/toast";
 import { etiquetaDiaSemanaCorto } from "@/lib/fecha-ui";
+import { DateField } from "@/components/ui/date-field";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AvisoAtrasados } from "@/components/fulfillment/aviso-atrasados";
+import {
+  PARAM_DIA_REPARTO,
+  diaRepartoDesdeParam,
+  diasAtrasadosVisibles,
+  hrefRepartoDia,
+} from "@/lib/reparto-dia";
 import { cn } from "@/lib/utils";
 import {
   cobradoPendienteColaCentavos,
@@ -64,7 +75,9 @@ const BARRA_FIJA =
   "fixed inset-x-0 bottom-[var(--bottombar-height)] z-20 border-t border-[var(--border-subtle)] bg-blanco/95 px-4 py-3 backdrop-blur-sm lg:static lg:inset-auto lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none";
 const CTA = "w-full min-h-14 text-base";
 
-export default function RepartoPage() {
+function RepartoInner() {
+  const router = useRouter();
+  const sp = useSearchParams();
   const cola = useColaOffline();
   const [sel, setSel] = useState<string | null>(null);
   const [vista, setVista] = useState<VistaParada>("entrega");
@@ -87,9 +100,17 @@ export default function RepartoPage() {
     enabled: Boolean(me.data),
     refetchInterval: 60_000,
   });
+  // Día de calle que se está viendo: `null` es hoy. Un día anterior sirve
+  // para marcar lo que se quedó sin registrar; nunca pisa el snapshot de hoy,
+  // que es con el que Tony sale a la calle sin señal.
+  const diaVista = diaRepartoDesdeParam(
+    sp.get(PARAM_DIA_REPARTO),
+    calendario.data?.hoyCivil,
+  );
   const ruta = useQuery({
-    queryKey: ["ruta"],
+    queryKey: ["ruta", diaVista ?? "hoy"],
     queryFn: async () => {
+      if (diaVista) return api<RutaReparto>(hrefRepartoDia(diaVista));
       try {
         const data = await api<RutaReparto>("/reparto");
         await cola.guardarSnapshot(data);
@@ -102,10 +123,26 @@ export default function RepartoPage() {
     },
     enabled: Boolean(me.data) && cola.listo,
   });
+  // Bajo la clave «ruta» para que una entrega —propia, de la cola offline o
+  // por SSE— lo refresque sin cablear nada aparte.
+  const atrasados = useQuery({
+    queryKey: ["ruta", "atrasados"],
+    queryFn: () => api<RepartoAtrasados>("/reparto/atrasados"),
+    enabled: Boolean(me.data),
+  });
+  const diasAtrasados = diasAtrasadosVisibles(atrasados.data, diaVista);
+
+  function verDia(fecha: string | null) {
+    const destino = diaRepartoDesdeParam(fecha, calendario.data?.hoyCivil);
+    setSel(null);
+    setFiltro("todas");
+    startTransition(() => router.replace(hrefRepartoDia(destino)));
+  }
 
   // Snapshot offline de otro día: la ruta se ve, pero no se presenta como
   // la de hoy. «UI honesta» también aplica a la fecha.
   const rutaDesfasada =
+    !diaVista &&
     ruta.data?.fechaEntrega &&
     calendario.data &&
     ruta.data.fechaEntrega !== calendario.data.hoyCivil
@@ -138,9 +175,10 @@ export default function RepartoPage() {
   const total = paradasEfectivas.length;
   const pendientes = total - entregados;
 
+  // Lo cobrado sin señal es de hoy: en un día anterior no se suma.
   const cobradoLocalCentavos = useMemo(
-    () => cobradoPendienteColaCentavos(cola.cola),
-    [cola.cola],
+    () => (diaVista ? 0 : cobradoPendienteColaCentavos(cola.cola)),
+    [cola.cola, diaVista],
   );
 
   const porCobrarCentavos = useMemo(
@@ -235,8 +273,31 @@ export default function RepartoPage() {
       {!sel && (
         <div className="grid gap-5">
           <ChipInstalar />
-          {calendario.data ? (
+          {calendario.data && !diaVista ? (
             <CintaEje copy={copyEjeReparto(calendario.data)} />
+          ) : null}
+          <SelectorDia
+            diaVista={diaVista}
+            hoy={calendario.data?.hoyCivil}
+            onDia={verDia}
+          />
+          {diaVista ? (
+            <Alert status="warning">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>
+                  Ruta del {etiquetaDiaSemanaCorto(diaVista)}
+                </Alert.Title>
+                <Alert.Description>
+                  Es un día anterior. Lo que marque aquí queda registrado hoy
+                  como entrega tardía de ese reparto, y su factura pasa a la
+                  cartera para poder cobrarla.
+                </Alert.Description>
+              </Alert.Content>
+              <Button size="sm" variant="secondary" onPress={() => verDia(null)}>
+                Volver a hoy
+              </Button>
+            </Alert>
           ) : null}
           {rutaDesfasada ? (
             <Alert status="warning">
@@ -251,8 +312,15 @@ export default function RepartoPage() {
             </Alert>
           ) : null}
 
+          <AvisoAtrasados dias={diasAtrasados} />
+
           <ResumenRuta
             cargando={ruta.isLoading}
+            etiquetaCobrado={
+              diaVista
+                ? `Cobrado el ${etiquetaDiaSemanaCorto(diaVista)}`
+                : "Cobrado hoy"
+            }
             entregados={entregados}
             total={total}
             pendientes={pendientes}
@@ -312,12 +380,38 @@ export default function RepartoPage() {
           )}
           {ruta.isError && !ruta.data && (
             <EmptyState
-              title={MENSAJE_RUTA_SIN_SNAPSHOT}
-              description="Tony arranca en planta. Sin esa carga no hay paradas que inventar."
+              title={
+                diaVista
+                  ? "No se pudo cargar la ruta de ese día"
+                  : MENSAJE_RUTA_SIN_SNAPSHOT
+              }
+              description={
+                diaVista
+                  ? "Los días anteriores solo se consultan con señal. Lo que ya marcó sigue en la cola de este teléfono."
+                  : "Tony arranca en planta. Sin esa carga no hay paradas que inventar."
+              }
+              icon={<Truck size={22} aria-hidden />}
+              action={
+                diaVista ? (
+                  <Button
+                    size="lg"
+                    variant="secondary"
+                    onPress={() => void ruta.refetch()}
+                  >
+                    Reintentar
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
+          {diaVista && ruta.data && ruta.data.paradas.length === 0 && (
+            <EmptyState
+              title="Ese día no tuvo ruta"
+              description="No hubo pedidos en producción para repartir ese día."
               icon={<Truck size={22} aria-hidden />}
             />
           )}
-          {ruta.data && ruta.data.paradas.length === 0 && (
+          {!diaVista && ruta.data && ruta.data.paradas.length === 0 && (
             <EmptyState
               title={
                 aviso?.bloqueaOperacion
@@ -380,6 +474,7 @@ export default function RepartoPage() {
       {sel && parada && vista === "entrega" && (
         <DetalleEntrega
           parada={parada}
+          diaAnterior={diaVista}
           online={cola.online}
           puedeEntregar={puedeEntregar}
           puedeCobrar={puedeCobrar}
@@ -396,6 +491,7 @@ export default function RepartoPage() {
       {sel && parada && vista === "cobro" && (
         <DetalleCobro
           parada={parada}
+          diaAnterior={diaVista}
           online={cola.online}
           puedeCobrar={puedeCobrar}
           error={error}
@@ -458,10 +554,38 @@ export default function RepartoPage() {
   );
 }
 
+/* El día de calle se elige aquí; por defecto, hoy. Solo días hasta hoy: la
+   ruta de mañana no existe hasta que cierra la ventana. */
+function SelectorDia({
+  diaVista,
+  hoy,
+  onDia,
+}: {
+  diaVista: string | null;
+  hoy: string | undefined;
+  onDia: (fecha: string | null) => void;
+}) {
+  if (!hoy) return null;
+  return (
+    <DateField
+      id="reparto-dia"
+      label="Día de reparto"
+      className="w-full sm:max-w-xs"
+      value={diaVista ?? hoy}
+      max={hoy}
+      fechaHoy={hoy}
+      presets={["hoy"]}
+      clearable={false}
+      onChange={(fecha) => onDia(fecha || null)}
+    />
+  );
+}
+
 /* Cuatro cifras: cuánto llevo, cuánto falta, cuánto entró y cuánto queda por
    cobrar. Es el mismo formato de KPIs de clientes y catálogo. */
 function ResumenRuta({
   cargando,
+  etiquetaCobrado,
   entregados,
   total,
   pendientes,
@@ -469,6 +593,7 @@ function ResumenRuta({
   porCobrarCentavos,
 }: {
   cargando: boolean;
+  etiquetaCobrado: string;
   entregados: number;
   total: number;
   pendientes: number;
@@ -497,7 +622,7 @@ function ResumenRuta({
         tono={pendientes > 0 ? "aviso" : "ok"}
       />
       <KpiCard
-        etiqueta="Cobrado hoy"
+        etiqueta={etiquetaCobrado}
         valor={<Money centavos={cobradoHoyCentavos} tone="pagado" truncate />}
       />
       <KpiCard
@@ -617,6 +742,7 @@ function CabeceraParada({
 
 function DetalleEntrega({
   parada,
+  diaAnterior,
   online,
   puedeEntregar,
   puedeCobrar,
@@ -629,6 +755,8 @@ function DetalleEntrega({
   onCobrar,
 }: {
   parada: RutaParada;
+  /** Día de calle ya pasado del que viene la parada; `null` si es hoy. */
+  diaAnterior: string | null;
   online: boolean;
   puedeEntregar: boolean;
   puedeCobrar: boolean;
@@ -652,6 +780,20 @@ function DetalleEntrega({
         sinSincronizar={sinSincronizar}
         onBack={onBack}
       />
+      {diaAnterior && !entregadoServidor ? (
+        <Alert status="warning">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>
+              Pedido del reparto del {etiquetaDiaSemanaCorto(diaAnterior)}
+            </Alert.Title>
+            <Alert.Description>
+              Ajuste lo que realmente se entregó ese día. Se registra como
+              entrega tardía y la factura sale sobre estas cantidades.
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       <Card className="gap-0 overflow-hidden p-0">
         <Card.Header className="p-4 pb-3">
           <Card.Title>Lo entregado</Card.Title>
@@ -751,6 +893,7 @@ function DetalleEntrega({
 
 function DetalleCobro({
   parada,
+  diaAnterior,
   online,
   puedeCobrar,
   error,
@@ -759,6 +902,7 @@ function DetalleCobro({
   onCobrar,
 }: {
   parada: RutaParada;
+  diaAnterior: string | null;
   online: boolean;
   puedeCobrar: boolean;
   error?: string;
@@ -772,6 +916,10 @@ function DetalleCobro({
   });
   const saldo = cobro.saldoTotalCentavos;
   const parcialHoy = cobro.facturaAbonadoCentavos > 0;
+  // En la ruta de un día anterior la factura de la parada no es «la de hoy».
+  const deLaParada = diaAnterior
+    ? `del reparto del ${etiquetaDiaSemanaCorto(diaAnterior)}`
+    : "de hoy";
 
   return (
     <div className="grid gap-4 pb-[calc(var(--bottombar-height)+5rem)]">
@@ -793,13 +941,15 @@ function DetalleCobro({
           <Card.Description>
             {cobro.saldoAnteriorCentavos > 0
               ? "El cobro se aplica primero a facturas anteriores"
-              : "Cobro de la factura de hoy"}
+              : `Cobro de la factura ${deLaParada}`}
           </Card.Description>
         </Card.Header>
         <Card.Content className="grid gap-3">
           {parcialHoy && (
             <div className="flex items-center justify-between gap-2 rounded-[calc(var(--radius-card)-6px)] bg-[var(--green-50)] px-3 py-2.5">
-              <span className="text-sm text-tinta-700">Cobrado hoy</span>
+              <span className="text-sm text-tinta-700">
+                {diaAnterior ? "Abonado a esta factura" : "Cobrado hoy"}
+              </span>
               <Money
                 centavos={cobro.facturaAbonadoCentavos}
                 tone="pagado"
@@ -809,7 +959,9 @@ function DetalleCobro({
           )}
           {cobro.facturaSaldoCentavos > 0 && (
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-tinta-700">Debe hoy</span>
+              <span className="text-sm text-tinta-700">
+                {diaAnterior ? "Debe de esta factura" : "Debe hoy"}
+              </span>
               <Money
                 centavos={cobro.facturaSaldoCentavos}
                 tone="pendiente"
@@ -873,5 +1025,19 @@ function DetalleCobro({
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RepartoPage() {
+  return (
+    <Suspense
+      fallback={
+        <PanelShell title="Reparto">
+          <Skeleton className="h-48" />
+        </PanelShell>
+      }
+    >
+      <RepartoInner />
+    </Suspense>
   );
 }

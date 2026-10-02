@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   cliente,
   clienteProducto,
@@ -16,11 +16,14 @@ import {
   TIPO_EVENTO_PEDIDO_ENTREGADO,
   entregarPedidoRequestSchema,
   entregaResultadoSchema,
+  fechaDeInstante,
   montoFacturaCentavos,
+  repartoAtrasadosSchema,
   repartoQuerySchema,
   rutaRepartoSchema,
   tienePermiso,
   type EntregaResultado,
+  type RepartoAtrasados,
   type RutaReparto,
 } from "@misupertostada/shared";
 import { DRIZZLE } from "../shared/tokens";
@@ -70,6 +73,7 @@ export class EntregaService {
         .map((i) => [i.productoId!, i.cantidadEntregada]),
     );
 
+    const hoyCivil = fechaDeInstante(this.calendar.now());
     const { pedidoId, idempotente } = await this.db.transaction(async (tx) => {
       const [ped] = await tx
         .select()
@@ -225,6 +229,11 @@ export class EntregaService {
           antes: { estado: ped.estado },
           despues: {
             estado: "ENTREGADO",
+            // Una entrega marcada después de su día de calle se distingue en
+            // el historial: la factura nace hoy, pero el reparto fue entonces.
+            fechaEntrega: ped.fechaEntrega,
+            marcadaEl: hoyCivil,
+            entregaTardia: ped.fechaEntrega < hoyCivil,
             cantidades: cantidades.map((c) => ({
               itemId: c.item.id,
               productoId: c.item.productoId,
@@ -345,6 +354,53 @@ export class EntregaService {
       fechaOperacion: fecha,
       cobradoHoyCentavos: Number(cobrado?.total ?? 0),
       paradas,
+    });
+  }
+
+  /**
+   * Pedidos de días de calle ya pasados que siguen sin marcarse entregados.
+   *
+   * La ruta sin fecha solo muestra el día de hoy, así que lo que Tony no marcó
+   * ayer desaparece de su pantalla. Esos pedidos no se pierden —siguen en
+   * `EN_PRODUCCION` con su snapshot de precios—, pero tampoco tienen factura:
+   * no cuentan en la cartera y no se les puede cobrar. Este conteo es la red
+   * que los vuelve a poner a la vista.
+   */
+  async atrasados(actor: Actor): Promise<RepartoAtrasados> {
+    const hoy = fechaDeInstante(this.calendar.now());
+    const montoSql = sql<number>`coalesce(sum(${pedidoItem.cantidadPedida} * ${pedidoItem.precioUnitarioCentavos}), 0)::int`;
+    const pendientesSql = sql<number>`count(distinct ${pedido.id})::int`;
+    const filas = await this.db
+      .select({
+        fechaEntrega: pedido.fechaEntrega,
+        pendientes: pendientesSql,
+        montoEstimadoCentavos: montoSql,
+      })
+      .from(pedido)
+      .leftJoin(pedidoItem, eq(pedidoItem.pedidoId, pedido.id))
+      .where(
+        and(
+          eq(pedido.organizacionId, actor.organizacionId),
+          eq(pedido.estado, "EN_PRODUCCION"),
+          lt(pedido.fechaEntrega, hoy),
+        ),
+      )
+      .groupBy(pedido.fechaEntrega)
+      .orderBy(desc(pedido.fechaEntrega));
+
+    const dias = filas.map((f) => ({
+      fechaEntrega: f.fechaEntrega,
+      pendientes: Number(f.pendientes),
+      montoEstimadoCentavos: Number(f.montoEstimadoCentavos),
+    }));
+    return repartoAtrasadosSchema.parse({
+      hoy,
+      pendientes: dias.reduce((acc, d) => acc + d.pendientes, 0),
+      montoEstimadoCentavos: dias.reduce(
+        (acc, d) => acc + d.montoEstimadoCentavos,
+        0,
+      ),
+      dias,
     });
   }
 
