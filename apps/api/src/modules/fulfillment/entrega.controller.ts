@@ -17,6 +17,11 @@ export class EntregaController {
     return envelopeOk(await this.entregas.ruta(query, actor));
   }
 
+  @Get("reparto/atrasados")
+  async atrasados(@CurrentActor() actor: Actor) {
+    return envelopeOk(await this.entregas.atrasados(actor));
+  }
+
   @Post("entregas")
   @RequierePermiso("pedidos.entregar")
   async entregar(@Body() body: unknown, @CurrentActor() actor: Actor) {

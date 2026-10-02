@@ -21,6 +21,7 @@ import {
   type OperacionResumen,
   type PedidoBandeja,
   type PedidoEstado,
+  type RepartoAtrasados,
 } from "@misupertostada/shared";
 import { api, ApiError } from "@/lib/api";
 import { buildPedidosHref } from "@/lib/pedido-vista";
@@ -52,6 +53,7 @@ import { etiquetaDiaCorto, etiquetaDiaSemanaCorto } from "@/lib/fecha-ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DialogoCierre } from "@/components/fulfillment/dialogo-cierre";
 import { DialogoReabrir } from "@/components/fulfillment/dialogo-reabrir";
+import { AvisoAtrasados } from "@/components/fulfillment/aviso-atrasados";
 import { VentanaBadge } from "@/components/domain/ventana-badge";
 import { ContadorFacturas } from "@/components/domain/contador-facturas";
 import { ClienteAvatar } from "@/components/catalog/cliente-avatar";
@@ -227,6 +229,14 @@ function HoyInner() {
       ),
     enabled: Boolean(me.data),
     placeholderData: keepPreviousData,
+  });
+
+  // Misma consulta y clave que en `/reparto`: una entrega la refresca en los
+  // dos lados. Sin señal o sin datos, simplemente no se muestra.
+  const atrasados = useQuery({
+    queryKey: ["ruta", "atrasados"],
+    queryFn: () => api<RepartoAtrasados>("/reparto/atrasados"),
+    enabled: Boolean(me.data),
   });
 
   const fotoPorCliente = useMemo(
@@ -436,6 +446,11 @@ function HoyInner() {
               fechaEntrega={data.fechaEntrega}
               actualizando={actualizando}
             />
+
+            {/* Lo que se quedó sin marcar en días anteriores no tiene factura:
+                no aparece en «Por cobrar» ni en la cartera. Se señala aquí
+                para que no se acumule sin que nadie lo vea. */}
+            <AvisoAtrasados dias={atrasados.data?.dias ?? []} />
 
             {/*
               Sin métrica de outbox: la cola de WhatsApp es plomería, no
