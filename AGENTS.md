@@ -46,6 +46,11 @@ Estas producen bugs caros si se rompen. No las replantees.
   `unidad_medida` en el momento de la captura.
 - **Nunca** derives el total histórico de una relación viva al catálogo. Si Cristian sube precios
   en octubre, los cierres de septiembre deben seguir cuadrando al centavo.
+- Corregir un snapshot que nació mal es una **acción explícita**, nunca efecto de editar el
+  catálogo: `PedidoPreciosService` (`POST /pedidos/:id/precios`, `POST /pedidos/recalcular-precios`),
+  permiso `precios.cambiar`, motivo obligatorio, `audit_log`. Si el pedido ya se entregó, también
+  mueve el monto de la factura y deja el cambio en `factura_ajuste`; nunca la baja por debajo de lo
+  abonado. Un precio puesto a mano en la captura vale solo para ese pedido.
 
 ### 2.3 Zona horaria
 - Zona del negocio: `America/Guatemala` (UTC−6, sin horario de verano).
@@ -225,6 +230,8 @@ PedidoItem              producto_id, cantidad_pedida, cantidad_entregada,
 
 Factura                 pedido_id, numero_dte (capturado por Carla), monto_centavos,
                         emitida_at
+FacturaAjuste           factura_id, monto_anterior_centavos, monto_nuevo_centavos, motivo,
+                        registrado_por  ← historial de correcciones de monto; solo inserción
 Pago                    factura_id, monto_centavos, metodo, fecha,
                         comprobante_asset_id, registrado_por
                         metodo: EFECTIVO | TRANSFERENCIA | CHEQUE
@@ -413,6 +420,10 @@ dato **no se puede perder ni parecer guardado sin estarlo**.
 ## 11. Convenciones
 
 - **Migraciones**: siempre en `packages/db`, nunca `push` contra producción. Reversibles.
+- **Seed**: solo inserta lo que falta (`onConflictDoNothing`). Nunca un upsert que pise datos
+  editables desde el panel (precios, nombres, notas, `activo`), y nunca corre en cada deploy
+  (`SEED_ON_BOOT` apagado por defecto). En octubre de 2026 eso regresó el catálogo a los precios
+  de fábrica en cada deploy. `packages/db/src/seed.test.ts` lo vigila.
 - **Env**: validado con Zod al arrancar. La app no levanta con configuración incompleta.
 - **Errores**: excepciones de dominio tipadas, mapeadas a HTTP en un filtro. Nada de `throw new Error('...')` en servicios.
 - **Respuestas API**: forma consistente, validada con los esquemas de `packages/shared`.

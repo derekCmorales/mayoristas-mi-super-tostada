@@ -196,7 +196,7 @@ export class PedidoPreciosService {
           nuevos,
         );
         if (plan.vista.cambios.length === 0) continue;
-        if (input.aplicar && !plan.vista.omitido) {
+        if (input.aplicar && input.motivo && !plan.vista.omitido) {
           await this.aplicar(tx, plan, input.motivo, "CATALOGO", actor);
         }
         planes.push(plan);

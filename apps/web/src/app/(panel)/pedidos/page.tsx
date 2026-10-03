@@ -34,6 +34,7 @@ import {
 import { PanelShell } from "@/components/layout/panel-shell";
 import { PedidoDetalle } from "@/components/ordering/pedido-detalle";
 import { CapturaManual } from "@/components/ordering/captura-manual";
+import { DialogoRecalcularPrecios } from "@/components/ordering/dialogo-recalcular-precios";
 import { ClienteAvatar } from "@/components/catalog/cliente-avatar";
 import { EstadoBadge } from "@/components/domain/estado-badge";
 import { Money } from "@/components/domain/money";
@@ -93,6 +94,10 @@ function PedidosInner() {
     me.data?.usuario.permisos ?? [],
     "cobranza.capturar_dte",
   );
+  const puedeCambiarPrecio = tienePermiso(
+    me.data?.usuario.permisos ?? [],
+    "precios.cambiar",
+  );
 
   // Tres fechas distintas, tres papeles distintos (ver `USAGE.md` §4):
   // «Hoy» es la operación EN CURSO —la que se reparte—, «Esta noche» la de
@@ -105,6 +110,7 @@ function PedidosInner() {
 
   const [q, setQ] = useState("");
   const [captura, setCaptura] = useState(false);
+  const [recalcular, setRecalcular] = useState(false);
 
   // Toda la vista (rango, cliente, segmento, selección) vive en la URL: es
   // deep-linkeable y sobrevive al refresh. Antes se copiaba a siete `useState`
@@ -370,11 +376,23 @@ function PedidosInner() {
               </ToggleButtonGroup>
             </div>
 
-            {!cargandoLista && pedidos.data ? (
-              <p className="mst-label tabular-nums" aria-live="polite">
-                {lista.length} de {totalPedidos}
-              </p>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {/* Recalcular es por operación: solo con un día elegido. */}
+              {puedeCambiarPrecio && desde && desde === hasta && !historialCliente ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => setRecalcular(true)}
+                >
+                  Recalcular precios
+                </Button>
+              ) : null}
+              {!cargandoLista && pedidos.data ? (
+                <p className="mst-label tabular-nums" aria-live="polite">
+                  {lista.length} de {totalPedidos}
+                </p>
+              ) : null}
+            </div>
           </div>
         </section>
 
@@ -533,6 +551,7 @@ function PedidosInner() {
                     pedido={detalle.data}
                     puedeDte={puedeDte}
                     puedeEscribir={puedeEscribir}
+                    puedeCambiarPrecio={puedeCambiarPrecio}
                     fotoAssetId={
                       clientePorId.get(detalle.data.clienteId)?.fotoAssetId
                     }
@@ -549,6 +568,13 @@ function PedidosInner() {
           </div>
         </div>
       </div>
+
+      {recalcular && desde ? (
+        <DialogoRecalcularPrecios
+          fechaOperacion={desde}
+          onClose={() => setRecalcular(false)}
+        />
+      ) : null}
 
       <CapturaManual
         open={captura}

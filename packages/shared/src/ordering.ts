@@ -402,6 +402,8 @@ export const pedidoDetalleItemSchema = z.object({
   id: z.string().uuid().optional(),
   productoId: z.string().uuid(),
   cantidad: z.number().int().positive(),
+  /** Igual a `cantidad` hasta entregar. La factura se calcula sobre esta. */
+  cantidadEntregada: z.number().int().nonnegative(),
   /** Snapshot comercial (alias del cliente al capturar). */
   nombreMostrado: z.string(),
   /** Nombre de producción vivo; el panel interno muestra este. */
@@ -539,11 +541,17 @@ export type AjustarPreciosPedidoRequest = z.infer<
  * Recalcula con el catálogo vigente todos los pedidos de una operación.
  * `aplicar: false` solo devuelve la vista previa, sin escribir nada.
  */
-export const recalcularPreciosRequestSchema = z.object({
-  fechaOperacion: fechaOperacionSchema,
-  motivo: motivoAjustePrecioSchema,
-  aplicar: z.boolean().default(false),
-});
+export const recalcularPreciosRequestSchema = z
+  .object({
+    fechaOperacion: fechaOperacionSchema,
+    /** Obligatorio al aplicar; la vista previa no escribe nada. */
+    motivo: motivoAjustePrecioSchema.optional(),
+    aplicar: z.boolean().default(false),
+  })
+  .refine((r) => !r.aplicar || r.motivo, {
+    message: MENSAJE_MOTIVO_AJUSTE_PRECIO,
+    path: ["motivo"],
+  });
 
 export type RecalcularPreciosRequest = z.infer<
   typeof recalcularPreciosRequestSchema

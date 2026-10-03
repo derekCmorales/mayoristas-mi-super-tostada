@@ -216,7 +216,7 @@ describe.skipIf(!listo)("corrección de precios de pedidos", () => {
 
       const motivo = "Deploy regresó los precios de fábrica";
       const previa = await f.precios.recalcular(
-        { fechaOperacion: pA.fechaOperacion, motivo },
+        { fechaOperacion: pA.fechaOperacion },
         f.jefe,
       );
       expect(previa.aplicado).toBe(false);
@@ -381,6 +381,12 @@ describe.skipIf(!listo)("corrección de precios de pedidos", () => {
           f.tienda,
         ),
       ).rejects.toMatchObject({ code: "PERMISO_DENEGADO" });
+      await expect(
+        f.precios.recalcular(
+          { fechaOperacion: p.fechaOperacion, aplicar: true },
+          f.jefe,
+        ),
+      ).rejects.toMatchObject({ httpStatus: 400 });
 
       const otro = await f.producto(900);
       await expect(

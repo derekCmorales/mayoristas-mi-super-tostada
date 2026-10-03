@@ -42,6 +42,7 @@ import { etiquetaDiaSemanaCorto } from "@/lib/fecha-ui";
 import { DialogoCapturaDte } from "@/components/receivables/dialogo-captura-dte";
 import { BotonDte } from "@/components/receivables/boton-dte";
 import { ComprobanteAssetPreview } from "@/components/receivables/comprobante-asset-preview";
+import { DialogoAjustePrecios } from "@/components/ordering/dialogo-ajuste-precios";
 
 const ACCION_TEXTO: Record<string, string> = {
   "portal.confirmar": "capturó el pedido desde el portal",
@@ -50,6 +51,7 @@ const ACCION_TEXTO: Record<string, string> = {
   "pedidos.editar_items": "ajustó los ítems",
   "pedidos.notas": "actualizó las notas del administrador",
   "pedidos.anular": "anuló el pedido",
+  "pedidos.ajustar_precios": "corrigió precios",
 };
 
 type ItemLocal = {
@@ -69,11 +71,14 @@ export function PedidoDetalle({
   pedido,
   puedeEscribir,
   puedeDte,
+  puedeCambiarPrecio = false,
   fotoAssetId,
 }: {
   pedido: PedidoDetalleDto;
   puedeEscribir: boolean;
   puedeDte: boolean;
+  /** `precios.cambiar`: corregir precios aunque el día esté cerrado o entregado. */
+  puedeCambiarPrecio?: boolean;
   fotoAssetId?: string | null;
 }) {
   const qc = useQueryClient();
@@ -82,6 +87,7 @@ export function PedidoDetalle({
   const [notas, setNotas] = useState(pedido.notasAdmin ?? "");
   const [anular, setAnular] = useState(false);
   const [dteAbierto, setDteAbierto] = useState(false);
+  const [ajustePrecios, setAjustePrecios] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [agregarId, setAgregarId] = useState("");
@@ -224,6 +230,15 @@ export function PedidoDetalle({
 
   const hintDte = `Capturar DTE del pedido #${pedido.correlativo}`;
 
+  const puedeAjustarPrecios =
+    puedeCambiarPrecio && pedido.estado !== "ANULADO";
+  const lineasFueraDeCatalogo = pedido.items.filter(
+    (i) =>
+      !i.esDevolucion &&
+      i.precioCatalogoCentavos != null &&
+      i.precioCatalogoCentavos !== i.precioUnitarioCentavos,
+  ).length;
+
   const hora = horaEnZona(new Date(pedido.capturadoAt));
   const origenLabel = pedido.origen === "PORTAL" ? "Portal" : "Manual";
   const tel = pedido.clienteTelefonoWa?.replace(/\D/g, "") ?? "";
@@ -361,7 +376,34 @@ export function PedidoDetalle({
           <Card.Description>
             Precio y nombre quedan en snapshot al capturar
           </Card.Description>
+          {puedeAjustarPrecios ? (
+            <Button
+              className="mt-2 w-full sm:w-auto"
+              isDisabled={dirty}
+              size="sm"
+              variant="secondary"
+              onPress={() => setAjustePrecios(true)}
+            >
+              Corregir precios
+            </Button>
+          ) : null}
         </Card.Header>
+        {puedeAjustarPrecios && lineasFueraDeCatalogo > 0 ? (
+          <Alert className="mx-5 mb-3" status="warning">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>
+                {lineasFueraDeCatalogo === 1
+                  ? "Una línea tiene un precio distinto al catálogo actual"
+                  : `${lineasFueraDeCatalogo} líneas tienen un precio distinto al catálogo actual`}
+              </Alert.Title>
+              <Alert.Description>
+                El pedido cobra el precio con que se capturó. Si se tomó con un
+                precio equivocado, corríjalo con «Corregir precios».
+              </Alert.Description>
+            </Alert.Content>
+          </Alert>
+        ) : null}
         <Card.Content className="border-t border-[var(--border-subtle)] p-0">
           {items.map((item) => (
             <PedidoItemRow
@@ -659,6 +701,13 @@ export function PedidoDetalle({
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>
+
+      {ajustePrecios ? (
+        <DialogoAjustePrecios
+          pedido={pedido}
+          onClose={() => setAjustePrecios(false)}
+        />
+      ) : null}
 
       {dteAbierto && pedido.factura ? (
         <DialogoCapturaDte

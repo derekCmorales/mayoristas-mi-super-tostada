@@ -6,11 +6,13 @@ import {
   Modal,
   Spinner,
 } from "@heroui/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
+  tienePermiso,
   totalPedidoCentavos,
   precioEfectivoCentavos,
+  type ActorPublico,
   type CalendarioAhora,
   type ClienteBonoPublico,
   type ClienteProductoFila,
@@ -48,10 +50,22 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
   const [clienteId, setClienteId] = useState("");
   const [cantidades, setCantidades] = useState<Record<string, number>>({});
   const [cantidadesBono, setCantidadesBono] = useState<Record<string, number>>({});
+  const [precios, setPrecios] = useState<Record<string, number | null>>({});
+  const [guardarEnCliente, setGuardarEnCliente] = useState<Record<string, boolean>>({});
   const [notasAdmin, setNotasAdmin] = useState("");
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+  const me = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: () => api<{ usuario: ActorPublico }>("/auth/me"),
+    enabled: open,
+  });
+  const puedeFijarPrecio = tienePermiso(
+    me.data?.usuario.permisos ?? [],
+    "precios.cambiar",
+  );
   const clientes = useQuery({
     queryKey: ["clientes"],
     queryFn: () => api<ClientePublico[]>("/clientes"),
@@ -107,13 +121,40 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
     return agruparProductosCaptura(filtrados);
   }, [productos.data, q]);
 
+  const filaDe = (productoId: string) =>
+    productos.data?.find((p) => p.productoId === productoId);
+  const precioCatalogo = (productoId: string) => {
+    const fila = filaDe(productoId);
+    return fila
+      ? precioEfectivoCentavos({
+          precioClienteCentavos: fila.precioCentavos,
+          precioBaseCentavos: fila.precioBaseCentavos,
+        })
+      : null;
+  };
+  /** Lo que cobrará la línea: el puesto a mano si lo hay, si no el de catálogo. */
+  const precioLinea = (productoId: string) =>
+    puedeFijarPrecio && precios[productoId] !== undefined
+      ? precios[productoId]
+      : precioCatalogo(productoId);
+
   const itemsPagados = Object.entries(cantidades)
     .filter(([, cantidad]) => cantidad > 0)
-    .map(([productoId, cantidad]) => ({
-      productoId,
-      cantidad,
-      esDevolucion: false,
-    }));
+    .map(([productoId, cantidad]) => {
+      const precio = precioLinea(productoId);
+      return {
+        productoId,
+        cantidad,
+        esDevolucion: false,
+        // El servidor valida el permiso; solo se manda si cambió.
+        ...(precio != null && precio !== precioCatalogo(productoId)
+          ? { precioUnitarioCentavos: precio }
+          : {}),
+      };
+    });
+  const sinPrecio = itemsPagados.filter(
+    (item) => precioLinea(item.productoId) == null,
+  ).length;
   const itemsBonos = Object.entries(cantidadesBono)
     .filter(([, cantidad]) => cantidad > 0)
     .flatMap(([bonoId, cantidad]) => {
@@ -134,16 +175,9 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
       if (item.esDevolucion) {
         return { cantidad: item.cantidad, precioUnitarioCentavos: 0 };
       }
-      const fila = productos.data?.find((p) => p.productoId === item.productoId);
       return {
         cantidad: item.cantidad,
-        precioUnitarioCentavos:
-          fila
-            ? (precioEfectivoCentavos({
-                precioClienteCentavos: fila.precioCentavos,
-                precioBaseCentavos: fila.precioBaseCentavos,
-              }) ?? 0)
-            : 0,
+        precioUnitarioCentavos: precioLinea(item.productoId) ?? 0,
       };
     }),
   );
@@ -168,8 +202,9 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
           notasAdmin: notasAdmin.trim() || undefined,
         }),
       }),
-    onSuccess: (pedido) => {
+    onSuccess: async (pedido) => {
       toastSuccess(`Pedido #${pedido.correlativo} capturado`);
+      await guardarPreciosDelCliente();
       onCaptured(pedido);
     },
     onError: (err) => {
@@ -178,10 +213,55 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
     },
   });
 
+  /**
+   * «Guardar como precio de este cliente»: el pedido ya salió con su precio;
+   * esto además lo deja en el catálogo del cliente para los siguientes. Si
+   * falla, el pedido sigue capturado y se avisa.
+   */
+  async function guardarPreciosDelCliente() {
+    const aGuardar = itemsPagados.flatMap((item) => {
+      const precio = precioLinea(item.productoId);
+      if (!guardarEnCliente[item.productoId] || precio == null) return [];
+      if (precio === precioCatalogo(item.productoId)) return [];
+      return [{ productoId: item.productoId, precio }];
+    });
+    if (aGuardar.length === 0) return;
+    try {
+      for (const { productoId, precio } of aGuardar) {
+        await api(`/clientes/${clienteId}/productos/${productoId}`, {
+          method: "PUT",
+          body: JSON.stringify({ precioCentavos: precio }),
+        });
+      }
+      toastSuccess(
+        aGuardar.length === 1
+          ? "Precio guardado para el cliente"
+          : `${aGuardar.length} precios guardados para el cliente`,
+      );
+    } catch (err) {
+      toastFromError(
+        err,
+        "El pedido se capturó, pero no se guardó el precio del cliente",
+      );
+    } finally {
+      await qc.invalidateQueries({ queryKey: ["clientes", clienteId] });
+    }
+  }
+
+  function cambiarPrecio(productoId: string, centavos: number | null) {
+    setPrecios((prev) => ({ ...prev, [productoId]: centavos }));
+  }
+
+  function cambiarGuardarEnCliente(productoId: string, guardar: boolean) {
+    setGuardarEnCliente((prev) => ({ ...prev, [productoId]: guardar }));
+  }
+
   function seleccionarCliente(id: string) {
     setClienteId(id);
     setCantidades({});
     setCantidadesBono({});
+    setPrecios({});
+    setGuardarEnCliente({});
     setNotasAdmin("");
     setQ("");
     setError(null);
@@ -251,6 +331,11 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
                     fotoPorProducto={fotoPorProducto}
                     cantidades={cantidades}
                     onCantidadChange={cambiarCantidadProducto}
+                    puedeFijarPrecio={puedeFijarPrecio}
+                    precios={precios}
+                    onPrecioChange={cambiarPrecio}
+                    guardarEnCliente={guardarEnCliente}
+                    onGuardarEnClienteChange={cambiarGuardarEnCliente}
                   />
 
                   <CapturaManualPie
@@ -262,6 +347,14 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
                   />
                 </>
               ) : null}
+
+              {sinPrecio > 0 && (
+                <p className="text-sm text-aviso-700">
+                  {sinPrecio === 1
+                    ? "Una línea no tiene precio. Póngale uno para capturar."
+                    : `${sinPrecio} líneas no tienen precio. Póngales uno para capturar.`}
+                </p>
+              )}
 
               {error && (
                 <Alert status="danger">
@@ -281,7 +374,12 @@ function FormularioCaptura({ open, onClose, onCaptured }: PropsCaptura) {
             </Button>
             <Button
               className="button--accent w-full sm:w-auto"
-              isDisabled={!clienteId || items.length === 0 || capturar.isPending}
+              isDisabled={
+                !clienteId ||
+                items.length === 0 ||
+                sinPrecio > 0 ||
+                capturar.isPending
+              }
               isPending={capturar.isPending}
               variant="primary"
               onPress={() => capturar.mutate()}

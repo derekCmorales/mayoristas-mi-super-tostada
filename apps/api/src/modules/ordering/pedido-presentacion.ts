@@ -156,6 +156,7 @@ export async function presentarPedidoPanel(
     id: linea.item.id,
     productoId: linea.item.productoId,
     cantidad: linea.item.cantidadPedida,
+    cantidadEntregada: linea.item.cantidadEntregada,
     nombreMostrado: linea.item.nombreMostrado,
     nombreCanonico: linea.nombreCanonico,
     unidadMedida: linea.item.unidadMedida,
