@@ -21,6 +21,12 @@ export type ItemSnapshot = {
   precioUnitarioCentavos: number;
   esDevolucion: boolean;
   bonoId: string | null;
+  /**
+   * Presente cuando el panel puso el precio a mano y difiere del que tocaba
+   * (catálogo para una línea nueva, snapshot para una existente). No se
+   * persiste en `pedido_item`; queda en `audit_log` como evidencia.
+   */
+  precioFijado?: { porDefectoCentavos: number | null };
 };
 
 export function horarioDe(
@@ -61,6 +67,21 @@ export function exigirAnulable(estado: string): void {
   }
 }
 
+/** Precio puesto a mano en el panel: mismo permiso que cambiar el catálogo. */
+export function exigirPermisoPrecioFijado(
+  actor: Actor,
+  snapshots: ItemSnapshot[],
+): void {
+  if (!snapshots.some((s) => s.precioFijado)) return;
+  if (!tienePermiso(actor.permisos, "precios.cambiar")) {
+    throw new DomainException(
+      "PERMISO_DENEGADO",
+      "No tiene permiso para cambiar precios",
+      403,
+    );
+  }
+}
+
 export function exigirConfirmado(estado: string): void {
   if (estado === "ANULADO") {
     throw new DomainException("PEDIDO_ANULADO", MENSAJE_PEDIDO_ANULADO, 409);
@@ -90,9 +111,12 @@ export function congelarSnapshots(
       ...item,
       nombreMostrado: previo.nombreMostrado,
       unidadMedida: previo.unidadMedida,
+      // El snapshot se respeta salvo que el panel lo haya fijado a mano.
       precioUnitarioCentavos: item.esDevolucion
         ? 0
-        : previo.precioUnitarioCentavos,
+        : item.precioFijado
+          ? item.precioUnitarioCentavos
+          : previo.precioUnitarioCentavos,
       bonoId: item.esDevolucion ? item.bonoId : null,
     };
   });

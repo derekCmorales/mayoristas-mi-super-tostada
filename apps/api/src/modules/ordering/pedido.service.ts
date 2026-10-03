@@ -30,6 +30,7 @@ import {
   exigirAnulable,
   exigirCaptura,
   exigirConfirmado,
+  exigirPermisoPrecioFijado,
   exigirVentanaPortal,
   horarioDe,
 } from "./pedido-reglas";
@@ -382,6 +383,7 @@ export class PedidoService {
       input.items,
       [],
     );
+    exigirPermisoPrecioFijado(actor, snapshots);
     const notasAdmin = input.notasAdmin?.trim() || null;
 
     for (let intento = 0; intento < 5; intento++) {
@@ -529,6 +531,7 @@ export class PedidoService {
       input.items,
       itemsPrevios,
     );
+    exigirPermisoPrecioFijado(actor, snapshots);
     const relojVivo = await relojVivoSobreCaptura(
       this.calendar,
       actor.organizacionId,

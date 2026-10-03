@@ -12,6 +12,7 @@ import {
   diaOperacion,
   domainEvents,
   factura,
+  facturaAjuste,
   hojaProduccion,
   mensaje,
   organizacion,
@@ -109,6 +110,9 @@ async function purgarLote(db: Db, ids: string[]): Promise<void> {
   await db.delete(conversacion).where(inArray(conversacion.clienteId, clientes));
   await db.delete(pago).where(inArray(pago.facturaId, facturas));
   await db.delete(abono).where(inArray(abono.clienteId, clientes));
+  await db
+    .delete(facturaAjuste)
+    .where(inArray(facturaAjuste.facturaId, facturas));
   await db.delete(factura).where(inArray(factura.pedidoId, pedidos));
   await db.delete(pedidoItem).where(inArray(pedidoItem.pedidoId, pedidos));
   await db.delete(pedido).where(inArray(pedido.organizacionId, ids));

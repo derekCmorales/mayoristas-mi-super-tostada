@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { PedidoService } from "./pedido.service";
+import { PedidoPreciosService } from "./pedido-precios.service";
 import { PedidosController } from "./pedidos.controller";
 import { PortalController } from "./portal.controller";
 import { PortalService } from "./portal.service";
@@ -20,6 +21,7 @@ import { PortalSessionService } from "./portal-session.service";
     { provide: PortalRateLimit, useFactory: portalRateLimitDefault },
     PortalTokenGuard,
     PedidoService,
+    PedidoPreciosService,
     PortalPedidoService,
     PortalAssetsService,
     PortalSessionService,

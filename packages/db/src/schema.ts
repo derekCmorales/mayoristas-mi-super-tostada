@@ -331,6 +331,29 @@ export const factura = pgTable(
   ],
 );
 
+/**
+ * Corrección del monto de una factura ya emitida (precio mal tasado). La
+ * factura guarda el monto vigente; esta tabla guarda cada cambio, para que un
+ * cierre pasado se pueda reconstruir al centavo. Solo inserción.
+ */
+export const facturaAjuste = pgTable(
+  "factura_ajuste",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    facturaId: uuid("factura_id")
+      .notNull()
+      .references(() => factura.id),
+    montoAnteriorCentavos: integer("monto_anterior_centavos").notNull(),
+    montoNuevoCentavos: integer("monto_nuevo_centavos").notNull(),
+    motivo: text("motivo").notNull(),
+    registradoPor: uuid("registrado_por")
+      .notNull()
+      .references(() => usuario.id),
+    ...timestamps,
+  },
+  (t) => [index("factura_ajuste_factura_idx").on(t.facturaId)],
+);
+
 export const abono = pgTable(
   "abono",
   {
