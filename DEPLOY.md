@@ -106,7 +106,7 @@ Plantilla: `deploy/openship.env.example`.
 | `APP_ENCRYPTION_KEY` | `openssl rand -hex 32` |
 | `R2_*` | Obligatorio en production (`apps/api/src/config/env.ts`). |
 | `BOOTSTRAP_ADMIN_*` | Crea el primer `ADMIN_JEFE` si `usuario` está vacía. |
-| `SEED_ON_BOOT` | `true` **solo el primer deploy**. Después `false`: el seed pisa nombres de SKUs oficiales. |
+| `SEED_ON_BOOT` | `true` **solo el primer deploy**, después quítalo (default `false`). El seed solo inserta lo que falta: no pisa precios, nombres ni clientes editados en el panel (`packages/db/src/seed.test.ts`). |
 
 WhatsApp (Meta) es opcional. Sin esas claves, el Fake adapter cubre el desarrollo; en producción no se envía a Graph.
 

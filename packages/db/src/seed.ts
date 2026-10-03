@@ -1,14 +1,16 @@
 /**
- * Seed de desarrollo con los datos de CONTEXT.md §5.
- * Idempotente: se puede correr dos veces sin duplicar.
- * En producción no hay precios ni token de portal.
- * En desarrollo (D5) Tabasco Casa Vieja recibe precios de demo y un token conocido.
+ * Seed con los datos de CONTEXT.md §5.
+ * Idempotente y **solo de inserción**: correrlo sobre una base viva no cambia
+ * nada que ya exista (precios, nombres, notas, `activo`). Lo nuevo entra; lo
+ * editado desde el panel se respeta. `seed.test.ts` lo vigila.
+ * En producción no hay usuarios ni token de portal de demo.
+ * En desarrollo (D5) Tabasco Casa Vieja recibe alias de demo y un token conocido.
  */
 import { resolve } from "node:path";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and, sql, notInArray } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as argon2 from "argon2";
 import {
@@ -244,19 +246,31 @@ const FERIADOS = [
   { fecha: "2027-12-25", motivo: "Navidad" },
 ] as const;
 
-export async function seed(databaseUrl: string) {
+export type SeedOpciones = {
+  /** Por defecto la organización fija de producción. Los tests usan una propia. */
+  organizacionId?: string;
+  nombreOrganizacion?: string;
+  /** Sin usuarios, alias ni tokens de demo. Por defecto `NODE_ENV === "production"`. */
+  produccion?: boolean;
+};
+
+export async function seed(databaseUrl: string, opciones: SeedOpciones = {}) {
+  const organizacionId = opciones.organizacionId ?? ORG_ID;
+  const nombreOrganizacion = opciones.nombreOrganizacion ?? "Mi Súper Tostada";
+  const produccion =
+    opciones.produccion ?? process.env.NODE_ENV === "production";
   const client = postgres(databaseUrl, { max: 1 });
   const db = drizzle(client, { schema });
 
   try {
     await db
       .insert(schema.organizacion)
-      .values({ id: ORG_ID, nombre: "Mi Súper Tostada" })
+      .values({ id: organizacionId, nombre: nombreOrganizacion })
       .onConflictDoNothing({ target: schema.organizacion.id });
 
     // Sin estas 7 filas el calendario trata la semana como apagada: no hay
     // fallback de horario en ninguna parte.
-    await sembrarVentanaSemanal(db, ORG_ID);
+    await sembrarVentanaSemanal(db, organizacionId);
 
     await db
       .insert(schema.permiso)
@@ -268,7 +282,7 @@ export async function seed(databaseUrl: string) {
       )
       .onConflictDoNothing();
 
-    if (process.env.NODE_ENV !== "production") {
+    if (!produccion) {
       const password = process.env.SEED_ADMIN_PASSWORD ?? "dev-local-only";
       const passwordHash = await argon2.hash(password, {
         type: argon2.argon2id,
@@ -277,25 +291,25 @@ export async function seed(databaseUrl: string) {
         .insert(schema.usuario)
         .values([
           {
-            organizacionId: ORG_ID,
+            organizacionId,
             username: "cristian",
             passwordHash,
             rol: "ADMIN_JEFE",
           },
           {
-            organizacionId: ORG_ID,
+            organizacionId,
             username: "alex",
             passwordHash,
             rol: "PRODUCCION",
           },
           {
-            organizacionId: ORG_ID,
+            organizacionId,
             username: "carla",
             passwordHash,
             rol: "TIENDA",
           },
           {
-            organizacionId: ORG_ID,
+            organizacionId,
             username: "tony",
             passwordHash,
             rol: "REPARTO",
@@ -311,7 +325,7 @@ export async function seed(databaseUrl: string) {
           rol: schema.usuario.rol,
         })
         .from(schema.usuario)
-        .where(eq(schema.usuario.organizacionId, ORG_ID));
+        .where(eq(schema.usuario.organizacionId, organizacionId));
       const catalogoPermisos = await db.select().from(schema.permiso);
       const porCodigo = new Map(
         catalogoPermisos.map((p) => [p.codigo as PermisoCodigo, p.id]),
@@ -338,74 +352,45 @@ export async function seed(databaseUrl: string) {
       }
     }
 
+    // Catálogo y clientes: el seed solo **inserta lo que falta**. Una vez que
+    // la fila existe, es de Cristian —la edita desde el panel— y el seed no la
+    // vuelve a tocar: ni precio, ni nombre, ni notas, ni `activo`.
+    //
+    // Antes era un upsert que reescribía `precio_base_centavos` con la lista de
+    // `catalogo-seed.ts` y desactivaba todo SKU o cliente fuera de la lista
+    // fija. Con `SEED_ON_BOOT=true` olvidado en el compose, cada deploy de
+    // octubre de 2026 regresó los precios a los de fábrica y los pedidos de esa
+    // noche se tasaron mal. Ver `seed.test.ts`.
     await db
       .insert(schema.producto)
       .values(
         PRODUCTOS.map((p) => ({
-          organizacionId: ORG_ID,
+          organizacionId,
           ...p,
           precioBaseCentavos: PRECIOS_BASE_SEED_CENTAVOS[p.sku] ?? null,
         })),
       )
-      .onConflictDoUpdate({
+      .onConflictDoNothing({
         target: [schema.producto.organizacionId, schema.producto.sku],
-        set: {
-          nombreCanonico: sql`excluded.nombre_canonico`,
-          familia: sql`excluded.familia`,
-          unidadMedida: sql`excluded.unidad_medida`,
-          puntoCarga: sql`excluded.punto_carga`,
-          esProducido: sql`excluded.es_producido`,
-          orden: sql`excluded.orden`,
-          precioBaseCentavos: sql`excluded.precio_base_centavos`,
-          activo: true,
-        },
       });
-
-    const officialSkus = PRODUCTOS.map((p) => p.sku);
-    await db
-      .update(schema.producto)
-      .set({ activo: false })
-      .where(
-        and(
-          eq(schema.producto.organizacionId, ORG_ID),
-          notInArray(schema.producto.sku, officialSkus),
-        ),
-      );
 
     await db
       .insert(schema.cliente)
       .values(
         CLIENTES.map((c) => ({
-          organizacionId: ORG_ID,
+          organizacionId,
           ...c,
         })),
       )
-      .onConflictDoUpdate({
+      .onConflictDoNothing({
         target: [schema.cliente.organizacionId, schema.cliente.nombre],
-        set: {
-          notasPermanentes: sql`excluded.notas_permanentes`,
-          limiteFacturasPendientes: sql`excluded.limite_facturas_pendientes`,
-          horarioEntregaFijo: sql`excluded.horario_entrega_fijo`,
-          activo: true,
-        },
       });
-
-    const officialNombres = CLIENTES.map((c) => c.nombre);
-    await db
-      .update(schema.cliente)
-      .set({ activo: false })
-      .where(
-        and(
-          eq(schema.cliente.organizacionId, ORG_ID),
-          notInArray(schema.cliente.nombre, officialNombres),
-        ),
-      );
 
     await db
       .insert(schema.diaNoLaborable)
       .values(
         FERIADOS.map((f) => ({
-          organizacionId: ORG_ID,
+          organizacionId,
           fecha: f.fecha,
           motivo: f.motivo,
           editable: true,
@@ -418,7 +403,7 @@ export async function seed(databaseUrl: string) {
       .from(schema.producto)
       .where(
         and(
-          eq(schema.producto.organizacionId, ORG_ID),
+          eq(schema.producto.organizacionId, organizacionId),
           eq(schema.producto.familia, "TORTILLA"),
         ),
       );
@@ -428,7 +413,7 @@ export async function seed(databaseUrl: string) {
       .from(schema.cliente)
       .where(
         and(
-          eq(schema.cliente.organizacionId, ORG_ID),
+          eq(schema.cliente.organizacionId, organizacionId),
           eq(schema.cliente.nombre, "TABASCO CASA VIEJA (LA ESPERANZA)"),
         ),
       );
@@ -448,7 +433,7 @@ export async function seed(databaseUrl: string) {
         .onConflictDoNothing();
     }
 
-    if (tabascoCasaVieja && process.env.NODE_ENV !== "production") {
+    if (tabascoCasaVieja && !produccion) {
       const demoTortilla: Record<
         string,
         { alias: string; favorito: boolean }
@@ -497,7 +482,7 @@ export async function seed(databaseUrl: string) {
         .from(schema.producto)
         .where(
           and(
-            eq(schema.producto.organizacionId, ORG_ID),
+            eq(schema.producto.organizacionId, organizacionId),
             eq(schema.producto.sku, "NACH-B-P"),
           ),
         );
@@ -527,19 +512,19 @@ export async function seed(databaseUrl: string) {
       }
     }
 
-    if (process.env.NODE_ENV !== "production") {
+    if (!produccion) {
       await db
         .update(schema.cliente)
         .set({
           tokenPortalHash: null,
           tokenPortalCifrado: null,
         })
-        .where(eq(schema.cliente.organizacionId, ORG_ID));
+        .where(eq(schema.cliente.organizacionId, organizacionId));
 
       const todosClientes = await db
         .select()
         .from(schema.cliente)
-        .where(eq(schema.cliente.organizacionId, ORG_ID));
+        .where(eq(schema.cliente.organizacionId, organizacionId));
 
       for (const cl of todosClientes) {
         const slug = cl.nombre
@@ -571,14 +556,14 @@ export async function seed(databaseUrl: string) {
       );
     }
 
-    await seedPlantillasFake(db, ORG_ID);
+    await seedPlantillasFake(db, organizacionId);
 
     const krakens = await db
       .select()
       .from(schema.cliente)
       .where(
         and(
-          eq(schema.cliente.organizacionId, ORG_ID),
+          eq(schema.cliente.organizacionId, organizacionId),
           sql`${schema.cliente.nombre} LIKE 'KRAKEN%'`,
         ),
       );
@@ -588,7 +573,7 @@ export async function seed(databaseUrl: string) {
       .from(schema.producto)
       .where(
         and(
-          eq(schema.producto.organizacionId, ORG_ID),
+          eq(schema.producto.organizacionId, organizacionId),
           eq(schema.producto.sku, "FAJ-B"),
         ),
       );
