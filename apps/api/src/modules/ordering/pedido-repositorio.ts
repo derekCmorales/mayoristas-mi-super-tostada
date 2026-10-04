@@ -67,12 +67,18 @@ export async function itemsDe(
 export async function bloquearPedidoParaItems(
   tx: AppDatabase,
   pedidoId: string,
-): Promise<void> {
-  await tx
-    .select({ id: pedido.id })
+): Promise<{ estado: string }> {
+  const [row] = await tx
+    .select({ estado: pedido.estado })
     .from(pedido)
     .where(eq(pedido.id, pedidoId))
     .for("update");
+  if (!row) {
+    throw new DomainException("NO_ENCONTRADO", "Pedido no encontrado", 404);
+  }
+  // El estado leído antes del lock pudo cambiar (anulado, cerrado): quien
+  // llama lo vuelve a validar con este.
+  return row;
 }
 
 export async function insertarPedido(

@@ -14,6 +14,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   UNIDAD_CORTA,
+  montoFacturaCentavos,
+  totalPedidoCentavos,
   type PedidoDetalle,
 } from "@misupertostada/shared";
 import { api, ApiError } from "@/lib/api";
@@ -61,16 +63,25 @@ export function DialogoAjustePrecios({
       l.precioCatalogoCentavos !== precioNuevo(l),
   );
 
-  const devolucionesCentavos = pedido.items
-    .filter((i) => i.esDevolucion)
-    .reduce((acc, i) => acc + cantidadCobrada(i) * i.precioUnitarioCentavos, 0);
-  const totalAntes = lineas.reduce(
-    (acc, l) => acc + cantidadCobrada(l) * l.precioUnitarioCentavos,
-    devolucionesCentavos,
-  );
-  const totalDespues = lineas.reduce(
-    (acc, l) => acc + cantidadCobrada(l) * precioNuevo(l),
-    devolucionesCentavos,
+  // Mismas funciones que usa el servidor: factura sobre lo entregado, pedido
+  // sobre lo pedido. Las devoluciones van a precio 0 y no cambian.
+  const total = (precio: (l: Linea) => number) =>
+    entregado
+      ? montoFacturaCentavos(
+          pedido.items.map((l) => ({
+            cantidadEntregada: l.cantidadEntregada,
+            precioUnitarioCentavos: precio(l),
+          })),
+        )
+      : totalPedidoCentavos(
+          pedido.items.map((l) => ({
+            cantidad: l.cantidad,
+            precioUnitarioCentavos: precio(l),
+          })),
+        );
+  const totalAntes = total((l) => l.precioUnitarioCentavos);
+  const totalDespues = total((l) =>
+    l.esDevolucion ? l.precioUnitarioCentavos : precioNuevo(l),
   );
   const abonado = pedido.factura?.abonadoCentavos ?? 0;
   const bajoAbonado = pedido.factura != null && totalDespues < abonado;

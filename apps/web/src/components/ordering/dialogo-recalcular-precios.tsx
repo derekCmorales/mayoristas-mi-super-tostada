@@ -66,6 +66,8 @@ export function DialogoRecalcularPrecios({
           esperado: aplicables.map((p) => ({
             pedidoId: p.pedidoId,
             totalDespuesCentavos: p.totalDespuesCentavos,
+            estado: p.estado,
+            numeroDte: p.numeroDte,
           })),
         }),
       }),
@@ -92,7 +94,7 @@ export function DialogoRecalcularPrecios({
   const pedidos = previa.data?.pedidos ?? [];
   const aplicables = pedidos.filter((p) => !p.omitido);
   const conDte = aplicables.filter((p) => p.ajustaFactura && p.numeroDte);
-  const manuales = pedidos.reduce((acc, p) => acc + p.lineasManuales, 0);
+  const manuales = previa.data?.lineasManuales ?? 0;
   const diaPasado =
     fechaOperacionEnCurso != null && fechaOperacion < fechaOperacionEnCurso;
   const formId = `recalcular-${fechaOperacion}`;
@@ -140,7 +142,9 @@ export function DialogoRecalcularPrecios({
                 </Alert>
               ) : pedidos.length === 0 ? (
                 <p className="rounded-campo bg-[var(--green-50)] px-3 py-3 text-sm text-tinta-800">
-                  Todos los pedidos de ese día ya cuadran con el catálogo.
+                  {manuales > 0
+                    ? "Fuera de los precios puestos a mano, todos los pedidos de ese día ya cuadran con el catálogo."
+                    : "Todos los pedidos de ese día ya cuadran con el catálogo."}
                 </p>
               ) : (
                 <ul className="grid max-h-[45vh] divide-y divide-[var(--border-subtle)] overflow-auto rounded-campo border border-[var(--border-subtle)]">

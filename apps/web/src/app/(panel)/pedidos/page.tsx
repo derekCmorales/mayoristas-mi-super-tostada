@@ -13,6 +13,8 @@ import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   horaEnZona,
+  MAXIMO_DIAS_RECALCULO,
+  desplazarFecha,
   tienePermiso,
   type ActorPublico,
   type CalendarioAhora,
@@ -377,8 +379,17 @@ function PedidosInner() {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Recalcular es por operación: solo con un día elegido. */}
-              {puedeCambiarPrecio && desde && desde === hasta && !historialCliente ? (
+              {/*
+                Recalcular es por operación (un solo día) y solo reciente: el
+                servidor rechaza más allá de MAXIMO_DIAS_RECALCULO.
+              */}
+              {puedeCambiarPrecio &&
+              desde &&
+              desde === hasta &&
+              !historialCliente &&
+              calendario.data?.hoyCivil &&
+              desde >=
+                desplazarFecha(calendario.data.hoyCivil, -MAXIMO_DIAS_RECALCULO) ? (
                 <Button
                   size="sm"
                   variant="secondary"

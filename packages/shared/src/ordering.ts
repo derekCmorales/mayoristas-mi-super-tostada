@@ -362,6 +362,14 @@ export const MENSAJE_MOTIVO_AJUSTE_PRECIO =
   "Indique el motivo del cambio de precio. Queda en el historial.";
 export const MENSAJE_PRECIO_LINEA_CAPTURADA =
   "Esa línea ya tiene precio. Para cambiarlo use «Corregir precios»: pide motivo.";
+/**
+ * «Recalcular precios» es para corregir pedidos tomados con un catálogo
+ * equivocado, no para repreciar el pasado: con una operación vieja, el
+ * catálogo de hoy ya trae subidas normales y reescribiría cierres que deben
+ * cuadrar al centavo (§2.2). Más atrás, «Corregir precios» pedido por pedido.
+ */
+export const MAXIMO_DIAS_RECALCULO = 7;
+export const MENSAJE_RECALCULO_FUERA_DE_PLAZO = `Solo se recalculan operaciones de los últimos ${MAXIMO_DIAS_RECALCULO} días. Para una anterior use «Corregir precios» en cada pedido.`;
 export const MENSAJE_VISTA_PREVIA_VENCIDA =
   "Los pedidos o el catálogo cambiaron desde la vista previa. Revísela de nuevo.";
 export const MENSAJE_AJUSTE_BAJO_ABONADO =
@@ -561,6 +569,9 @@ export const recalcularPreciosRequestSchema = z
         z.object({
           pedidoId: z.string().uuid(),
           totalDespuesCentavos: centavosSchema,
+          /** Si se entregó o le capturaron DTE después, ya no es lo que se vio. */
+          estado: z.enum(PEDIDO_ESTADOS),
+          numeroDte: z.string().nullable(),
         }),
       )
       .optional(),
@@ -613,6 +624,11 @@ export const recalcularPreciosResultadoSchema = z.object({
   aplicado: z.boolean(),
   /** Solo pedidos con al menos una línea distinta del catálogo. */
   pedidos: z.array(ajustePrecioPedidoSchema),
+  /**
+   * Líneas con precio a mano que difieren del catálogo y se respetan, de
+   * todos los pedidos del día (también los que no aparecen en `pedidos`).
+   */
+  lineasManuales: z.number().int().nonnegative(),
 });
 
 export type RecalcularPreciosResultado = z.infer<

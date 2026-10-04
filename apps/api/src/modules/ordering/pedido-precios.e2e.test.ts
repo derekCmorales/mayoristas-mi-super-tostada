@@ -47,7 +47,47 @@ function esperadoDe(previa: RecalcularPreciosResultado) {
     .map((p) => ({
       pedidoId: p.pedidoId,
       totalDespuesCentavos: p.totalDespuesCentavos,
+      estado: p.estado,
+      numeroDte: p.numeroDte,
     }));
+}
+
+type Db = ReturnType<typeof openTestDb>["db"];
+
+/** Espera a que alguna sesión esté bloqueada esperando un lock sobre `patron`. */
+async function esperarLock(db: Db, patron: string) {
+  for (let i = 0; i < 150; i++) {
+    const [fila] = await db.execute<{ n: number }>(sql`
+      select count(*)::int as n from pg_stat_activity
+      where datname = current_database()
+        and wait_event_type = 'Lock'
+        and query ilike ${patron}
+    `);
+    if (Number(fila?.n ?? 0) > 0) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`nadie esperó un lock sobre ${patron}`);
+}
+
+/** Abre una transacción en otra conexión y la deja abierta hasta `soltar()`. */
+function transaccionRetenida(
+  db: Db,
+  cuerpo: (tx: Db) => Promise<void>,
+): { listo: Promise<void>; soltar: () => void; fin: Promise<void> } {
+  let soltar!: () => void;
+  const suelta = new Promise<void>((r) => {
+    soltar = r;
+  });
+  let marcarListo!: () => void;
+  const listo = new Promise<void>((r) => {
+    marcarListo = r;
+  });
+  const fin = db.transaction(async (tx) => {
+    await cuerpo(tx as unknown as Db);
+    marcarListo();
+    await suelta;
+  });
+  return { listo, soltar, fin };
 }
 
 function instanteGT(isoLocal: string): Date {
@@ -448,6 +488,176 @@ describe.skipIf(!listo)("corrección de precios de pedidos", () => {
     }
   });
 
+  test("un abono que corre junto a una baja de precio no deja la factura sobrepagada", async () => {
+    const f = await fixture();
+    const otra = openTestDb();
+    const sondeo = openTestDb();
+    try {
+      const prod = await f.producto(1000);
+      const cli = await f.restaurante();
+      const p = await f.pedidos.crearManual(
+        { clienteId: cli.id, items: [{ productoId: prod.id, cantidad: 10 }] },
+        f.jefe,
+      );
+      await f.cierre.cerrar({ fechaOperacion: p.fechaOperacion }, f.jefe);
+      const e = await f.entregas.entregar(
+        { idempotencyKey: crypto.randomUUID(), pedidoId: p.id },
+        f.reparto,
+      );
+      // Una corrección en curso bajó la factura de Q100 a Q80 y no confirma.
+      const ajuste = transaccionRetenida(otra.db, async (tx) => {
+        await tx.select().from(factura).where(eq(factura.id, e.factura.id)).for("update");
+        await tx
+          .update(factura)
+          .set({ montoCentavos: 8000 })
+          .where(eq(factura.id, e.factura.id));
+      });
+      await ajuste.listo;
+
+      // Tony cobra Q100 con el saldo viejo en la cabeza.
+      const cobro = f.pagos.registrar(
+        {
+          id: crypto.randomUUID(),
+          idempotencyKey: `abono-${crypto.randomUUID()}`,
+          clienteId: cli.id,
+          montoCentavos: 10000,
+          metodo: "EFECTIVO",
+        },
+        f.reparto,
+      );
+      const resultado = cobro.then(
+        () => "cobrado",
+        (err: { code?: string }) => err.code ?? "error",
+      );
+      await esperarLock(sondeo.db, "%factura%");
+      ajuste.soltar();
+      await ajuste.fin;
+
+      // Con el lock, el abono ve el monto nuevo y no cabe.
+      expect(await resultado).toBe("PAGO_EXCEDE_SALDO");
+      const facturaFinal = await f.facturas.presentar(e.factura.id);
+      expect(facturaFinal.abonadoCentavos).toBeLessThanOrEqual(
+        facturaFinal.montoCentavos,
+      );
+    } finally {
+      await otra.client.end({ timeout: 1 });
+      await sondeo.client.end({ timeout: 1 });
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("una edición que corre junto a una anulación no revive el pedido", async () => {
+    const f = await fixture();
+    const otra = openTestDb();
+    const sondeo = openTestDb();
+    try {
+      const prod = await f.producto(1000);
+      const cli = await f.restaurante();
+      const p = await f.pedidos.crearManual(
+        { clienteId: cli.id, items: [{ productoId: prod.id, cantidad: 2 }] },
+        f.jefe,
+      );
+      const anulacion = transaccionRetenida(otra.db, async (tx) => {
+        await tx.select().from(pedido).where(eq(pedido.id, p.id)).for("update");
+        await tx
+          .update(pedido)
+          .set({ estado: "ANULADO", motivoAnulacion: "carrera" })
+          .where(eq(pedido.id, p.id));
+      });
+      await anulacion.listo;
+      const edicion = f.pedidos
+        .editarItems(
+          p.id,
+          { items: [{ productoId: prod.id, cantidad: 5 }] },
+          f.tienda,
+        )
+        .then(
+          () => "editado",
+          (err: { code?: string }) => err.code ?? "error",
+        );
+      await esperarLock(sondeo.db, "%pedido%");
+      anulacion.soltar();
+      await anulacion.fin;
+
+      expect(await edicion).toBe("PEDIDO_ANULADO");
+      expect(
+        (await f.db.select().from(pedidoItem).where(eq(pedidoItem.pedidoId, p.id)))[0]
+          ?.cantidadPedida,
+      ).toBe(2);
+    } finally {
+      await otra.client.end({ timeout: 1 });
+      await sondeo.client.end({ timeout: 1 });
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("límites del recálculo: plazo, vista previa con estado, líneas a mano e inactivos", async () => {
+    const f = await fixture();
+    try {
+      // Plazo: el reloj del fixture está en 2026-08-20.
+      await expect(
+        f.precios.recalcular({ fechaOperacion: "2026-08-01" }, f.jefe),
+      ).rejects.toMatchObject({ code: "RECALCULO_FUERA_DE_PLAZO", httpStatus: 409 });
+
+      const prod = await f.producto(1000);
+      const inactivo = await f.producto(700);
+      const manual = await f.producto(400);
+      const cli = await f.restaurante();
+      const p = await f.pedidos.crearManual(
+        {
+          clienteId: cli.id,
+          items: [
+            { productoId: prod.id, cantidad: 2 },
+            { productoId: inactivo.id, cantidad: 1 },
+          ],
+        },
+        f.jefe,
+      );
+      const soloManual = await f.pedidos.crearManual(
+        {
+          clienteId: cli.id,
+          items: [{ productoId: manual.id, cantidad: 1, precioUnitarioCentavos: 350 }],
+        },
+        f.jefe,
+      );
+      await f.productos.editar(prod.id, { precioBaseCentavos: 1100 }, f.jefe);
+      await f.productos.editar(inactivo.id, { precioBaseCentavos: 900 }, f.jefe);
+      await f.productos.desactivar(inactivo.id, f.jefe);
+
+      const previa = await f.precios.recalcular(
+        { fechaOperacion: p.fechaOperacion },
+        f.jefe,
+      );
+      // El pedido que solo difiere en líneas a mano no aparece, pero se cuenta.
+      expect(previa.pedidos.map((x) => x.pedidoId)).toEqual([p.id]);
+      expect(previa.lineasManuales).toBe(1);
+      expect(soloManual.id).not.toBe(p.id);
+      // La línea del producto inactivo no se reprecia.
+      expect(previa.pedidos[0]?.cambios.map((c) => c.productoId)).toEqual([prod.id]);
+      const detalle = await f.pedidos.obtener(p.id, f.jefe);
+      expect(
+        detalle.items.find((i) => i.productoId === inactivo.id)?.precioCatalogoCentavos,
+      ).toBeNull();
+
+      // Se entregó después de la vista previa: ya no es lo que se aprobó.
+      await f.cierre.cerrar({ fechaOperacion: p.fechaOperacion }, f.jefe);
+      await expect(
+        f.precios.recalcular(
+          {
+            fechaOperacion: p.fechaOperacion,
+            motivo: "x",
+            aplicar: true,
+            esperado: esperadoDe(previa),
+          },
+          f.jefe,
+        ),
+      ).rejects.toMatchObject({ code: "VISTA_PREVIA_VENCIDA" });
+      expect(await f.precioDeLinea(p.id, prod.id)).toBe(1000);
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
   test("no baja una factura por debajo de lo ya abonado", async () => {
     const f = await fixture();
     try {
@@ -597,7 +807,14 @@ describe.skipIf(!listo)("corrección de precios de pedidos", () => {
             fechaOperacion: p.fechaOperacion,
             motivo: "x",
             aplicar: true,
-            esperado: [{ pedidoId: conDos.id, totalDespuesCentavos: 1 }],
+            esperado: [
+              {
+                pedidoId: conDos.id,
+                totalDespuesCentavos: 1,
+                estado: "CONFIRMADO",
+                numeroDte: null,
+              },
+            ],
           },
           f.jefe,
         ),

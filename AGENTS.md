@@ -56,7 +56,10 @@ Estas producen bugs caros si se rompen. No las replantees.
   snapshot mal nacido. `PATCH /pedidos/:id/items` nunca cambia el precio de una línea ya capturada
   (`PRECIO_LINEA_CAPTURADA`); toda edición de líneas bloquea el pedido (`bloquearPedidoParaItems`)
   para no pisar una corrección concurrente. Aplicar el recálculo exige la vista previa aprobada
-  (`esperado`): si el servidor calcula otra cosa, rechaza con `VISTA_PREVIA_VENCIDA`.
+  (`esperado`: total, estado y DTE de cada pedido): si el servidor calcula otra cosa, rechaza con
+  `VISTA_PREVIA_VENCIDA`. Solo se recalculan operaciones de los últimos `MAXIMO_DIAS_RECALCULO`
+  días; más atrás, pedido por pedido. Un abono bloquea las facturas del cliente antes de repartir
+  (FIFO), igual que la corrección bloquea la suya: así nunca queda más abonado que monto.
 
 ### 2.3 Zona horaria
 - Zona del negocio: `America/Guatemala` (UTC−6, sin horario de verano).

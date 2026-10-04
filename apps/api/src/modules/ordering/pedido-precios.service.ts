@@ -9,8 +9,11 @@ import {
 } from "@misupertostada/db";
 import {
   MENSAJE_AJUSTE_BAJO_ABONADO,
+  MAXIMO_DIAS_RECALCULO,
   MENSAJE_PEDIDO_ANULADO,
+  MENSAJE_RECALCULO_FUERA_DE_PLAZO,
   MENSAJE_VISTA_PREVIA_VENCIDA,
+  desplazarFecha,
   ajustarPreciosPedidoRequestSchema,
   ajustePrecioPedidoSchema,
   montoFacturaCentavos,
@@ -153,8 +156,18 @@ export class PedidoPreciosService {
   ): Promise<RecalcularPreciosResultado> {
     exigirPermisoPrecios(actor);
     const input = parseBody(recalcularPreciosRequestSchema, body);
+    const { hoyCivil } = await this.calendar.ejes(actor.organizacionId);
+    if (input.fechaOperacion < desplazarFecha(hoyCivil, -MAXIMO_DIAS_RECALCULO)) {
+      throw new DomainException(
+        "RECALCULO_FUERA_DE_PLAZO",
+        MENSAJE_RECALCULO_FUERA_DE_PLAZO,
+        409,
+      );
+    }
 
+    let lineasManualesDelDia = 0;
     const planes = await this.db.transaction(async (tx) => {
+      lineasManualesDelDia = 0;
       const consulta = tx
         .select()
         .from(pedido)
@@ -215,6 +228,7 @@ export class PedidoPreciosService {
           () => false,
         );
         plan.vista.lineasManuales = lineasManuales;
+        lineasManualesDelDia += lineasManuales;
         if (plan.vista.cambios.length > 0) planes.push(plan);
       }
       if (!input.aplicar || !input.motivo) return planes;
@@ -222,13 +236,22 @@ export class PedidoPreciosService {
       // Solo se escribe lo que el usuario vio y aprobó.
       const aplicables = planes.filter((p) => !p.vista.omitido);
       const esperado = new Map(
-        (input.esperado ?? []).map((e) => [e.pedidoId, e.totalDespuesCentavos]),
+        (input.esperado ?? []).map((e) => [e.pedidoId, e]),
       );
+      // Total, estado y DTE: si el pedido se entregó o le capturaron DTE
+      // después de la vista previa, el usuario no vio que se tocaría su
+      // factura ni el aviso de la nota de crédito/débito.
       const coincide =
         aplicables.length === esperado.size &&
-        aplicables.every(
-          (p) => esperado.get(p.vista.pedidoId) === p.vista.totalDespuesCentavos,
-        );
+        aplicables.every((p) => {
+          const e = esperado.get(p.vista.pedidoId);
+          return (
+            e != null &&
+            e.totalDespuesCentavos === p.vista.totalDespuesCentavos &&
+            e.estado === p.vista.estado &&
+            e.numeroDte === p.vista.numeroDte
+          );
+        });
       if (!coincide) {
         throw new DomainException(
           "VISTA_PREVIA_VENCIDA",
@@ -267,6 +290,7 @@ export class PedidoPreciosService {
       fechaOperacion: input.fechaOperacion,
       aplicado: input.aplicar,
       pedidos: planes.map((p) => p.vista),
+      lineasManuales: lineasManualesDelDia,
     });
   }
 
@@ -312,8 +336,11 @@ export class PedidoPreciosService {
     const totalAntesCentavos = total((l) => l.precioUnitarioCentavos);
     const totalDespuesCentavos = total(precioNuevo);
 
+    // Solo un pedido entregado tiene factura (nace en EntregaService).
     const factura =
-      cambios.length > 0 ? await this.facturas.vistaDePedido(tx, row.id) : null;
+      cambios.length > 0 && entregado
+        ? await this.facturas.vistaDePedido(tx, row.id)
+        : null;
     const omitido =
       factura && totalDespuesCentavos < factura.abonadoCentavos
         ? MENSAJE_AJUSTE_BAJO_ABONADO
@@ -480,7 +507,11 @@ async function preciosDeCatalogo(
   const productos = await tx
     .select({ id: producto.id, precioBaseCentavos: producto.precioBaseCentavos })
     .from(producto)
-    .where(eq(producto.organizacionId, organizacionId));
+    // Como `cargarCatalogoCliente`: un producto inactivo no tiene precio
+    // vigente, así que sus líneas se quedan como están.
+    .where(
+      and(eq(producto.organizacionId, organizacionId), eq(producto.activo, true)),
+    );
   const ligas = await tx
     .select({
       clienteId: clienteProducto.clienteId,
@@ -494,8 +525,11 @@ async function preciosDeCatalogo(
     ligas.map((l) => [`${l.clienteId}:${l.productoId}`, l.precioCentavos]),
   );
   return (clienteId, productoId) =>
-    precioEfectivoCentavos({
-      precioClienteCentavos: propio.get(`${clienteId}:${productoId}`) ?? null,
-      precioBaseCentavos: base.get(productoId) ?? null,
-    });
+    !base.has(productoId)
+      ? null
+      : precioEfectivoCentavos({
+          precioClienteCentavos:
+            propio.get(`${clienteId}:${productoId}`) ?? null,
+          precioBaseCentavos: base.get(productoId) ?? null,
+        });
 }
