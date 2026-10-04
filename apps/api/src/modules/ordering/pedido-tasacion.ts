@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { clienteProducto, producto } from "@misupertostada/db";
 import {
   MENSAJE_PRECIO_AUSENTE,
+  MENSAJE_PRECIO_LINEA_CAPTURADA,
   precioEfectivoCentavos,
 } from "@misupertostada/shared";
 import type { AppDatabase } from "../shared/database.module";
@@ -15,7 +16,28 @@ type ItemInput = {
   cantidad: number;
   esDevolucion?: boolean;
   bonoId?: string;
+  /** Solo desde el panel (`capturaPanelItemSchema`). El portal nunca lo manda. */
+  precioUnitarioCentavos?: number;
 };
+
+/**
+ * Aplica el precio puesto a mano a una línea nueva, si difiere del catálogo.
+ * Un precio igual no cuenta como fijado ni exige `precios.cambiar`.
+ */
+function conPrecioFijado(
+  snapshot: ItemSnapshot,
+  item: ItemInput,
+  porDefectoCentavos: number | null,
+): ItemSnapshot {
+  const fijado = item.precioUnitarioCentavos;
+  if (fijado === undefined || fijado === porDefectoCentavos) return snapshot;
+  return {
+    ...snapshot,
+    precioUnitarioCentavos: fijado,
+    precioFijado: { porDefectoCentavos },
+    precioManual: true,
+  };
+}
 
 async function cargarCatalogoCliente(
   db: AppDatabase,
@@ -71,16 +93,32 @@ export async function tasarItemsPagados(
       const clave = `${item.productoId}:0`;
       const ya = previoPorClave.get(clave);
       if (ya) {
+        // Una línea ya capturada no cambia de precio por aquí: eso es
+        // «Corregir precios», que exige motivo (§2.2). Reenviar el mismo
+        // snapshot sí vale.
+        if (
+          item.precioUnitarioCentavos !== undefined &&
+          item.precioUnitarioCentavos !== ya.precioUnitarioCentavos
+        ) {
+          throw new DomainException(
+            "PRECIO_LINEA_CAPTURADA",
+            MENSAJE_PRECIO_LINEA_CAPTURADA,
+            409,
+          );
+        }
         return { ...ya, cantidad: item.cantidad };
       }
       const prod = porId.get(item.productoId);
       const liga = ligaPorProducto.get(item.productoId);
-      const precioUnitarioCentavos = prod
+      const precioCatalogo = prod
         ? precioEfectivoCentavos({
             precioClienteCentavos: liga?.precioCentavos ?? null,
             precioBaseCentavos: prod.precioBaseCentavos ?? null,
           })
         : null;
+      // Un precio puesto a mano cubre también un producto sin precio de lista.
+      const precioUnitarioCentavos =
+        item.precioUnitarioCentavos ?? precioCatalogo;
       if (!prod || precioUnitarioCentavos == null) {
         throw new DomainException(
           "PRECIO_AUSENTE",
@@ -89,15 +127,19 @@ export async function tasarItemsPagados(
         );
       }
       const alias = liga?.alias?.trim();
-      return {
-        productoId: item.productoId,
-        cantidad: item.cantidad,
-        nombreMostrado: alias || prod.nombreCanonico,
-        unidadMedida: prod.unidadMedida,
-        precioUnitarioCentavos,
-        esDevolucion: false,
-        bonoId: null,
-      };
+      return conPrecioFijado(
+        {
+          productoId: item.productoId,
+          cantidad: item.cantidad,
+          nombreMostrado: alias || prod.nombreCanonico,
+          unidadMedida: prod.unidadMedida,
+          precioUnitarioCentavos: precioCatalogo ?? precioUnitarioCentavos,
+          esDevolucion: false,
+          bonoId: null,
+        },
+        item,
+        precioCatalogo,
+      );
     });
 }
 

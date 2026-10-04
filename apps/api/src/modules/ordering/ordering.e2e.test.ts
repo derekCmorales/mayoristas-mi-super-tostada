@@ -29,6 +29,7 @@ import {
 } from "@misupertostada/shared";
 import { AuditWriter } from "../shared/audit.writer";
 import { OutboxWriter } from "../shared/outbox.writer";
+import { DomainEventWriter } from "../shared/domain-event.writer";
 import { BusinessCalendarService } from "../shared/calendar.service";
 import { AssetsService } from "../shared/storage/assets.service";
 import { AssetVariantsJob } from "../shared/storage/variants.job";
@@ -84,7 +85,14 @@ async function fixture(clock: Clock) {
   const storage = new FakeStorageAdapter();
   const variants = new AssetVariantsJob(db, storage);
   const assets = new AssetsService(db, storage, variants);
-  const facturas = new FacturaService(db, audit, outboxWriter, calendar, events);
+  const facturas = new FacturaService(
+    db,
+    audit,
+    outboxWriter,
+    calendar,
+    events,
+    new DomainEventWriter(db),
+  );
   const abonos = new AbonoService(db, audit, calendar, events, facturas);
   const portal = crearPortalService({
     db,

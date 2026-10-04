@@ -358,6 +358,22 @@ export const MENSAJE_PEDIDO_ANULADO =
   "Ese pedido está anulado y no se puede modificar.";
 export const MENSAJE_MOTIVO_ANULACION =
   "Indique el motivo. El pedido queda anulado, no se borra.";
+export const MENSAJE_MOTIVO_AJUSTE_PRECIO =
+  "Indique el motivo del cambio de precio. Queda en el historial.";
+export const MENSAJE_PRECIO_LINEA_CAPTURADA =
+  "Esa línea ya tiene precio. Para cambiarlo use «Corregir precios»: pide motivo.";
+/**
+ * «Recalcular precios» es para corregir pedidos tomados con un catálogo
+ * equivocado, no para repreciar el pasado: con una operación vieja, el
+ * catálogo de hoy ya trae subidas normales y reescribiría cierres que deben
+ * cuadrar al centavo (§2.2). Más atrás, «Corregir precios» pedido por pedido.
+ */
+export const MAXIMO_DIAS_RECALCULO = 7;
+export const MENSAJE_RECALCULO_FUERA_DE_PLAZO = `Solo se recalculan operaciones de los últimos ${MAXIMO_DIAS_RECALCULO} días. Para una anterior use «Corregir precios» en cada pedido.`;
+export const MENSAJE_VISTA_PREVIA_VENCIDA =
+  "Los pedidos o el catálogo cambiaron desde la vista previa. Revísela de nuevo.";
+export const MENSAJE_AJUSTE_BAJO_ABONADO =
+  "Esta factura ya tiene abonado más que el nuevo total. Corrija el abono antes de bajar el precio.";
 
 const fechaOperacionSchema = z
   .string()
@@ -398,12 +414,20 @@ export const pedidoDetalleItemSchema = z.object({
   id: z.string().uuid().optional(),
   productoId: z.string().uuid(),
   cantidad: z.number().int().positive(),
+  /** Igual a `cantidad` hasta entregar. La factura se calcula sobre esta. */
+  cantidadEntregada: z.number().int().nonnegative(),
   /** Snapshot comercial (alias del cliente al capturar). */
   nombreMostrado: z.string(),
   /** Nombre de producción vivo; el panel interno muestra este. */
   nombreCanonico: z.string(),
   unidadMedida: z.enum(UNIDADES_MEDIDA),
   precioUnitarioCentavos: centavosSchema,
+  /**
+   * Precio que el catálogo le daría hoy a este cliente (`null` si no hay).
+   * Solo informativo: el pedido cobra su snapshot. Si difieren, el panel
+   * ofrece ajustar.
+   */
+  precioCatalogoCentavos: centavosSchema.nullable().default(null),
   subtotalCentavos: centavosSchema,
   puntoCarga: z.enum(PUNTOS_CARGA),
   notaProduccion: z.string().nullable(),
@@ -452,9 +476,20 @@ export const pedidoDetalleSchema = z.object({
 
 export type PedidoDetalle = z.infer<typeof pedidoDetalleSchema>;
 
+/**
+ * Línea capturada desde el panel. A diferencia del portal, admite un precio
+ * puesto a mano: vale solo para este pedido y exige `precios.cambiar` cuando
+ * difiere del que tocaría (catálogo, o el snapshot si la línea ya existía).
+ */
+export const capturaPanelItemSchema = confirmarPedidoItemSchema.extend({
+  precioUnitarioCentavos: centavosSchema.nonnegative().optional(),
+});
+
+export type CapturaPanelItem = z.infer<typeof capturaPanelItemSchema>;
+
 export const crearPedidoManualRequestSchema = z.object({
   clienteId: z.string().uuid(),
-  items: z.array(confirmarPedidoItemSchema).min(1),
+  items: z.array(capturaPanelItemSchema).min(1),
   notasAdmin: z.string().max(2000).optional(),
 });
 
@@ -471,7 +506,7 @@ export type EditarNotasPedidoRequest = z.infer<
 >;
 
 export const editarItemsPedidoRequestSchema = z.object({
-  items: z.array(confirmarPedidoItemSchema).min(1),
+  items: z.array(capturaPanelItemSchema).min(1),
 });
 
 export type EditarItemsPedidoRequest = z.infer<
@@ -487,6 +522,118 @@ export const anularPedidoRequestSchema = z.object({
 });
 
 export type AnularPedidoRequest = z.infer<typeof anularPedidoRequestSchema>;
+
+const motivoAjustePrecioSchema = z
+  .string()
+  .trim()
+  .min(1, MENSAJE_MOTIVO_AJUSTE_PRECIO)
+  .max(500);
+
+/**
+ * Corrige el precio de líneas de un pedido ya capturado. Sirve en cualquier
+ * estado menos ANULADO; si el pedido ya se entregó, también ajusta su factura.
+ */
+export const ajustarPreciosPedidoRequestSchema = z.object({
+  motivo: motivoAjustePrecioSchema,
+  items: z
+    .array(
+      z.object({
+        productoId: z.string().uuid(),
+        precioUnitarioCentavos: centavosSchema.nonnegative(),
+      }),
+    )
+    .min(1),
+});
+
+export type AjustarPreciosPedidoRequest = z.infer<
+  typeof ajustarPreciosPedidoRequestSchema
+>;
+
+/**
+ * Recalcula con el catálogo vigente todos los pedidos de una operación.
+ * `aplicar: false` solo devuelve la vista previa, sin escribir nada.
+ */
+export const recalcularPreciosRequestSchema = z
+  .object({
+    fechaOperacion: fechaOperacionSchema,
+    /** Obligatorio al aplicar; la vista previa no escribe nada. */
+    motivo: motivoAjustePrecioSchema.optional(),
+    aplicar: z.boolean().default(false),
+    /**
+     * Al aplicar: los pedidos que el usuario vio en la vista previa, con su
+     * total nuevo. Si el servidor calcula otra cosa —llegó un pedido, cambió
+     * el catálogo, entró un abono—, rechaza en vez de escribir lo no visto.
+     */
+    esperado: z
+      .array(
+        z.object({
+          pedidoId: z.string().uuid(),
+          totalDespuesCentavos: centavosSchema,
+          /** Si se entregó o le capturaron DTE después, ya no es lo que se vio. */
+          estado: z.enum(PEDIDO_ESTADOS),
+          numeroDte: z.string().nullable(),
+        }),
+      )
+      .optional(),
+  })
+  .refine((r) => !r.aplicar || r.motivo, {
+    message: MENSAJE_MOTIVO_AJUSTE_PRECIO,
+    path: ["motivo"],
+  })
+  .refine((r) => !r.aplicar || r.esperado, {
+    message: MENSAJE_VISTA_PREVIA_VENCIDA,
+    path: ["esperado"],
+  });
+
+export type RecalcularPreciosRequest = z.infer<
+  typeof recalcularPreciosRequestSchema
+>;
+
+export const ajustePrecioLineaSchema = z.object({
+  productoId: z.string().uuid(),
+  nombreMostrado: z.string(),
+  antesCentavos: centavosSchema,
+  despuesCentavos: centavosSchema,
+});
+
+export type AjustePrecioLinea = z.infer<typeof ajustePrecioLineaSchema>;
+
+export const ajustePrecioPedidoSchema = z.object({
+  pedidoId: z.string().uuid(),
+  correlativo: z.number().int().positive(),
+  clienteNombre: z.string(),
+  estado: z.enum(PEDIDO_ESTADOS),
+  /** Sobre lo entregado si el pedido ya se entregó; si no, sobre lo pedido. */
+  totalAntesCentavos: centavosSchema,
+  totalDespuesCentavos: centavosSchema,
+  cambios: z.array(ajustePrecioLineaSchema),
+  /** El pedido ya tenía factura y su monto cambia. */
+  ajustaFactura: z.boolean(),
+  /** Carla ya capturó DTE: hay que emitir nota de crédito/débito fuera. */
+  numeroDte: z.string().nullable(),
+  /** Por qué no se toca (p. ej. abonado mayor al nuevo total). */
+  omitido: z.string().nullable(),
+  /** Líneas con precio puesto a mano que el recálculo respeta. */
+  lineasManuales: z.number().int().nonnegative().default(0),
+});
+
+export type AjustePrecioPedido = z.infer<typeof ajustePrecioPedidoSchema>;
+
+export const recalcularPreciosResultadoSchema = z.object({
+  fechaOperacion: z.string(),
+  aplicado: z.boolean(),
+  /** Solo pedidos con al menos una línea distinta del catálogo. */
+  pedidos: z.array(ajustePrecioPedidoSchema),
+  /**
+   * Líneas con precio a mano que difieren del catálogo y se respetan, de
+   * todos los pedidos del día (también los que no aparecen en `pedidos`).
+   */
+  lineasManuales: z.number().int().nonnegative(),
+});
+
+export type RecalcularPreciosResultado = z.infer<
+  typeof recalcularPreciosResultadoSchema
+>;
 
 export const PEDIDO_SSE_TIPOS = [
   "pedido.creado",

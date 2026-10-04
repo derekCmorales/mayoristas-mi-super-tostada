@@ -17,12 +17,14 @@ import { CurrentActor } from "../identity/current-actor";
 import type { Actor } from "../identity/actor";
 import { PedidoEvents } from "./pedido-events";
 import { PedidoService } from "./pedido.service";
+import { PedidoPreciosService } from "./pedido-precios.service";
 import { DomainException } from "../shared/domain.exception";
 
 @Controller("pedidos")
 export class PedidosController {
   constructor(
     private readonly pedidos: PedidoService,
+    private readonly precios: PedidoPreciosService,
     private readonly events: PedidoEvents,
   ) {}
 
@@ -51,6 +53,16 @@ export class PedidosController {
     return envelopeOk(await this.pedidos.crearManual(body, actor));
   }
 
+  /** Vista previa (`aplicar: false`) o recálculo con el catálogo vigente. */
+  @Post("recalcular-precios")
+  @RequierePermiso("precios.cambiar")
+  async recalcularPrecios(
+    @Body() body: unknown,
+    @CurrentActor() actor: Actor,
+  ) {
+    return envelopeOk(await this.precios.recalcular(body, actor));
+  }
+
   @Get(":id")
   async obtener(
     @Param("id", ParseUUIDPipe) id: string,
@@ -77,6 +89,16 @@ export class PedidosController {
     @CurrentActor() actor: Actor,
   ) {
     return envelopeOk(await this.pedidos.editarItems(id, body, actor));
+  }
+
+  @Post(":id/precios")
+  @RequierePermiso("precios.cambiar")
+  async ajustarPrecios(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @CurrentActor() actor: Actor,
+  ) {
+    return envelopeOk(await this.precios.ajustar(id, body, actor));
   }
 
   @Post(":id/anular")

@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, eq } from "drizzle-orm";
-import { cliente, factura, pedido } from "@misupertostada/db";
+import { cliente, factura, facturaAjuste, pedido } from "@misupertostada/db";
 import {
+  MENSAJE_AJUSTE_BAJO_ABONADO,
   MENSAJE_DTE_DUPLICADO,
+  TIPO_EVENTO_FACTURA_AJUSTADA,
   TIPO_EVENTO_LIMITE_CREDITO,
   capturarDteRequestSchema,
   tienePermiso,
@@ -12,6 +14,7 @@ import { DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
 import { AuditWriter } from "../shared/audit.writer";
 import { OutboxWriter } from "../shared/outbox.writer";
+import { DomainEventWriter } from "../shared/domain-event.writer";
 import { BusinessCalendarService } from "../shared/calendar.service";
 import { PedidoEvents } from "../shared/panel-events";
 import { DomainException } from "../shared/domain.exception";
@@ -24,16 +27,27 @@ import {
   type FacturaAlEntregarInput,
   type FacturaAlEntregarResultado,
 } from "./factura-al-entregar";
-import { pendientesDeCliente, presentarFactura } from "./factura-presentacion";
+import type {
+  FacturaAjuste,
+  FacturaAjusteInput,
+  FacturaAjusteResultado,
+  FacturaAjusteVista,
+} from "./factura-ajuste";
+import {
+  abonadoDeFactura,
+  pendientesDeCliente,
+  presentarFactura,
+} from "./factura-presentacion";
 
 @Injectable()
-export class FacturaService implements FacturaAlEntregar {
+export class FacturaService implements FacturaAlEntregar, FacturaAjuste {
   constructor(
     @Inject(DRIZZLE) private readonly db: AppDatabase,
     private readonly audit: AuditWriter,
     private readonly outbox: OutboxWriter,
     private readonly calendar: BusinessCalendarService,
     private readonly bus: PedidoEvents,
+    private readonly events: DomainEventWriter,
   ) {}
 
   async crearEnTx(
@@ -71,6 +85,99 @@ export class FacturaService implements FacturaAlEntregar {
       id: row.id,
       montoCentavos: row.montoCentavos,
       idempotente: !inserted[0],
+    };
+  }
+
+  async vistaDePedido(
+    tx: AppDatabase,
+    pedidoId: string,
+  ): Promise<FacturaAjusteVista | null> {
+    const [fac] = await tx
+      .select()
+      .from(factura)
+      .where(eq(factura.pedidoId, pedidoId))
+      .limit(1);
+    if (!fac) return null;
+    return {
+      facturaId: fac.id,
+      montoCentavos: fac.montoCentavos,
+      abonadoCentavos: await abonadoDeFactura(tx, fac.id),
+      numeroDte: fac.numeroDte ?? null,
+    };
+  }
+
+  async ajustarEnTx(
+    tx: AppDatabase,
+    input: FacturaAjusteInput,
+  ): Promise<FacturaAjusteResultado | null> {
+    const [fac] = await tx
+      .select()
+      .from(factura)
+      .where(eq(factura.pedidoId, input.pedidoId))
+      .limit(1)
+      .for("update");
+    if (!fac || fac.montoCentavos === input.montoCentavos) return null;
+
+    // No hay flujo de devolución: si el cliente ya pagó más que el total
+    // corregido, bajar el monto dejaría un saldo negativo que nadie ve.
+    const abonado = await abonadoDeFactura(tx, fac.id);
+    if (input.montoCentavos < abonado) {
+      throw new DomainException(
+        "AJUSTE_BAJO_ABONADO",
+        MENSAJE_AJUSTE_BAJO_ABONADO,
+        409,
+      );
+    }
+
+    const { actor } = input;
+    await tx.insert(facturaAjuste).values({
+      facturaId: fac.id,
+      montoAnteriorCentavos: fac.montoCentavos,
+      montoNuevoCentavos: input.montoCentavos,
+      motivo: input.motivo,
+      registradoPor: actor.usuarioId,
+    });
+    await tx
+      .update(factura)
+      .set({ montoCentavos: input.montoCentavos })
+      .where(eq(factura.id, fac.id));
+    await this.events.insert(
+      TIPO_EVENTO_FACTURA_AJUSTADA,
+      {
+        facturaId: fac.id,
+        pedidoId: input.pedidoId,
+        montoAnteriorCentavos: fac.montoCentavos,
+        montoNuevoCentavos: input.montoCentavos,
+      },
+      tx,
+    );
+    await this.audit.insert(
+      {
+        actorTipo: "usuario",
+        actorId: actor.usuarioId,
+        accion: "cobranza.ajustar_factura",
+        entidad: "factura",
+        entidadId: fac.id,
+        antes: { montoCentavos: fac.montoCentavos },
+        despues: {
+          montoCentavos: input.montoCentavos,
+          motivo: input.motivo,
+          numeroDte: fac.numeroDte ?? null,
+        },
+        ip: actor.ip,
+        userAgent: actor.userAgent,
+      },
+      tx,
+    );
+    // Una factura saldada que sube vuelve a contar como pendiente.
+    if (input.montoCentavos > fac.montoCentavos && abonado >= fac.montoCentavos) {
+      await this.verificarLimite(tx, input.pedidoId);
+    }
+    return {
+      facturaId: fac.id,
+      montoAnteriorCentavos: fac.montoCentavos,
+      montoNuevoCentavos: input.montoCentavos,
+      numeroDte: fac.numeroDte ?? null,
     };
   }
 

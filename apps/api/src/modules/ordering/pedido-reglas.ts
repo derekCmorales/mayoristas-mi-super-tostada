@@ -21,6 +21,13 @@ export type ItemSnapshot = {
   precioUnitarioCentavos: number;
   esDevolucion: boolean;
   bonoId: string | null;
+  /**
+   * Presente cuando el panel puso a mano el precio de una línea nueva y
+   * difiere del catálogo. Queda en `audit_log` como evidencia.
+   */
+  precioFijado?: { porDefectoCentavos: number | null };
+  /** Persistido en `pedido_item.precio_manual`. Ver schema. */
+  precioManual?: boolean;
 };
 
 export function horarioDe(
@@ -61,6 +68,24 @@ export function exigirAnulable(estado: string): void {
   }
 }
 
+export function exigirPermisoPrecios(actor: Actor): void {
+  if (!tienePermiso(actor.permisos, "precios.cambiar")) {
+    throw new DomainException(
+      "PERMISO_DENEGADO",
+      "No tiene permiso para cambiar precios",
+      403,
+    );
+  }
+}
+
+/** Precio puesto a mano en el panel: mismo permiso que cambiar el catálogo. */
+export function exigirPermisoPrecioFijado(
+  actor: Actor,
+  snapshots: ItemSnapshot[],
+): void {
+  if (snapshots.some((s) => s.precioFijado)) exigirPermisoPrecios(actor);
+}
+
 export function exigirConfirmado(estado: string): void {
   if (estado === "ANULADO") {
     throw new DomainException("PEDIDO_ANULADO", MENSAJE_PEDIDO_ANULADO, 409);
@@ -90,9 +115,11 @@ export function congelarSnapshots(
       ...item,
       nombreMostrado: previo.nombreMostrado,
       unidadMedida: previo.unidadMedida,
+      // El snapshot se respeta. Cambiarlo es «Corregir precios», con motivo.
       precioUnitarioCentavos: item.esDevolucion
         ? 0
         : previo.precioUnitarioCentavos,
+      precioManual: previo.precioManual ?? false,
       bonoId: item.esDevolucion ? item.bonoId : null,
     };
   });

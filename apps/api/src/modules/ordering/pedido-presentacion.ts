@@ -12,6 +12,7 @@ import {
 import {
   instanteAIso,
   pedidoDetalleSchema,
+  precioEfectivoCentavos,
   portalPedidoSchema,
   textoConfirmacionPedido,
   totalPedidoCentavos,
@@ -137,6 +138,9 @@ export async function presentarPedidoPanel(
       nombreCanonico: producto.nombreCanonico,
       puntoCarga: producto.puntoCarga,
       notaProduccion: clienteProducto.notaProduccion,
+      precioBaseCentavos: producto.precioBaseCentavos,
+      precioClienteCentavos: clienteProducto.precioCentavos,
+      productoActivo: producto.activo,
     })
     .from(pedidoItem)
     .innerJoin(producto, eq(producto.id, pedidoItem.productoId))
@@ -153,10 +157,19 @@ export async function presentarPedidoPanel(
     id: linea.item.id,
     productoId: linea.item.productoId,
     cantidad: linea.item.cantidadPedida,
+    cantidadEntregada: linea.item.cantidadEntregada,
     nombreMostrado: linea.item.nombreMostrado,
     nombreCanonico: linea.nombreCanonico,
     unidadMedida: linea.item.unidadMedida,
     precioUnitarioCentavos: linea.item.precioUnitarioCentavos,
+    // Inactivo = sin precio vigente, igual que en la captura.
+    precioCatalogoCentavos:
+      linea.item.esDevolucion || !linea.productoActivo
+        ? null
+        : precioEfectivoCentavos({
+            precioClienteCentavos: linea.precioClienteCentavos ?? null,
+            precioBaseCentavos: linea.precioBaseCentavos ?? null,
+          }),
     subtotalCentavos:
       linea.item.cantidadPedida * linea.item.precioUnitarioCentavos,
     puntoCarga: cal.puntoCargaEfectivo(

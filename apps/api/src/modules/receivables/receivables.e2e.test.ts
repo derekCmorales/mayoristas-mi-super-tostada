@@ -106,7 +106,7 @@ async function fixture(clock: Clock) {
     hoja,
     events,
   );
-  const facturas = new FacturaService(db, audit, outboxWriter, calendar, events);
+  const facturas = new FacturaService(db, audit, outboxWriter, calendar, events, domainEventsWriter);
   const abonos = new AbonoService(db, audit, calendar, events, facturas);
   const entregas = new EntregaService(
     db,

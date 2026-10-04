@@ -30,6 +30,7 @@ export const ANTIGUEDAD_VENCIDA_DIAS = 15;
 
 export const TIPO_EVENTO_PEDIDO_ENTREGADO = "PedidoEntregado";
 export const TIPO_EVENTO_LIMITE_CREDITO = "LimiteCreditoExcedido";
+export const TIPO_EVENTO_FACTURA_AJUSTADA = "FacturaAjustada";
 
 export const MENSAJE_PEDIDO_NO_ENTREGABLE =
   "Solo se entrega un pedido en producción. Cierre la ventana primero.";

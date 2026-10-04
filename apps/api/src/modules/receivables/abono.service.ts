@@ -473,6 +473,21 @@ export class AbonoService implements AbonoPortal {
     actor: Actor,
     fecha: string,
   ): Promise<Array<{ pago: typeof pago.$inferSelect; pedidoId: string }>> {
+    // Bloquea las facturas del cliente antes de leer saldos. Una corrección de
+    // precio (`ajustarEnTx`) bloquea la suya: así ninguna de las dos decide
+    // con un saldo que la otra está cambiando, y la factura nunca queda con
+    // más abonado que monto. También serializa dos abonos del mismo cliente.
+    await tx
+      .select({ id: factura.id })
+      .from(factura)
+      .innerJoin(pedido, eq(pedido.id, factura.pedidoId))
+      .where(
+        and(
+          eq(pedido.clienteId, abonoRow.clienteId),
+          eq(pedido.organizacionId, actor.organizacionId),
+        ),
+      )
+      .for("update", { of: factura });
     const destinos = await facturasPendientesDeCliente(
       tx,
       abonoRow.clienteId,

@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, eq, sql } from "drizzle-orm";
 import { cliente, pedido } from "@misupertostada/db";
 import {
+  MENSAJE_PEDIDO_ANULADO,
   anularPedidoRequestSchema,
   confirmarPedidoRequestSchema,
   crearPedidoManualRequestSchema,
@@ -30,11 +31,13 @@ import {
   exigirAnulable,
   exigirCaptura,
   exigirConfirmado,
+  exigirPermisoPrecioFijado,
   exigirVentanaPortal,
   horarioDe,
 } from "./pedido-reglas";
 import { restaurarBonosDePedido } from "./pedido-bono";
 import {
+  bloquearPedidoParaItems,
   buscarPedidoPortalAbierto,
   clienteDe,
   escribirItems,
@@ -117,6 +120,19 @@ export class PedidoService {
             clienteRow.id,
             fechaOperacion,
           );
+          if (existente) {
+            // Solo importa que no lo hayan anulado mientras tanto: tras un
+            // cierre anticipado el portal sigue editando un EN_PRODUCCION
+            // mientras corre el reloj (F-401).
+            const { estado } = await bloquearPedidoParaItems(tx, existente.id);
+            if (estado === "ANULADO") {
+              throw new DomainException(
+                "PEDIDO_ANULADO",
+                MENSAJE_PEDIDO_ANULADO,
+                409,
+              );
+            }
+          }
           const itemsAntes = existente
             ? await itemsDe(tx, existente.id)
             : [];
@@ -382,6 +398,7 @@ export class PedidoService {
       input.items,
       [],
     );
+    exigirPermisoPrecioFijado(actor, snapshots);
     const notasAdmin = input.notasAdmin?.trim() || null;
 
     for (let intento = 0; intento < 5; intento++) {
@@ -529,6 +546,7 @@ export class PedidoService {
       input.items,
       itemsPrevios,
     );
+    exigirPermisoPrecioFijado(actor, snapshots);
     const relojVivo = await relojVivoSobreCaptura(
       this.calendar,
       actor.organizacionId,
@@ -542,6 +560,8 @@ export class PedidoService {
         row.fechaOperacion,
         relojVivo,
       );
+      const { estado } = await bloquearPedidoParaItems(tx, row.id);
+      exigirConfirmado(estado);
       const itemsAntes = await itemsDe(tx, row.id);
       const congelados = await resolverSnapshotsConBonos(
         tx,

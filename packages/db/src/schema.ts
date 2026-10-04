@@ -309,6 +309,11 @@ export const pedidoItem = pgTable("pedido_item", {
   unidadMedida: unidadMedidaEnum("unidad_medida").notNull(),
   esDevolucion: boolean("es_devolucion").notNull().default(false),
   bonoId: uuid("bono_id").references(() => clienteBono.id),
+  /**
+   * El precio lo puso alguien a mano (captura o «Corregir precios») y difiere
+   * del catálogo. «Recalcular precios» no lo toca: era a propósito.
+   */
+  precioManual: boolean("precio_manual").notNull().default(false),
 });
 
 export const factura = pgTable(
@@ -329,6 +334,29 @@ export const factura = pgTable(
       .on(t.numeroDte)
       .where(sql`${t.numeroDte} is not null`),
   ],
+);
+
+/**
+ * Corrección del monto de una factura ya emitida (precio mal tasado). La
+ * factura guarda el monto vigente; esta tabla guarda cada cambio, para que un
+ * cierre pasado se pueda reconstruir al centavo. Solo inserción.
+ */
+export const facturaAjuste = pgTable(
+  "factura_ajuste",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    facturaId: uuid("factura_id")
+      .notNull()
+      .references(() => factura.id),
+    montoAnteriorCentavos: integer("monto_anterior_centavos").notNull(),
+    montoNuevoCentavos: integer("monto_nuevo_centavos").notNull(),
+    motivo: text("motivo").notNull(),
+    registradoPor: uuid("registrado_por")
+      .notNull()
+      .references(() => usuario.id),
+    ...timestamps,
+  },
+  (t) => [index("factura_ajuste_factura_idx").on(t.facturaId)],
 );
 
 export const abono = pgTable(
