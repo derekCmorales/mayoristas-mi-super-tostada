@@ -14,9 +14,21 @@ function texto(centavos: number | null): string {
     : formatearCentavos(centavos, { simbolo: false, miles: false });
 }
 
+function parsear(valor: string): number | null {
+  try {
+    return valor.trim() === "" ? null : quetzalesTextoACentavos(valor);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Precio en quetzales que el padre recibe en centavos enteros. Se valida al
- * salir del campo; vacío o inválido llega como `null`, nunca como float.
+ * Precio en quetzales que el padre recibe en centavos enteros, nunca float.
+ *
+ * Reporta **al teclear**, no al salir del campo: un Enter que envía el
+ * formulario tiene que llevar lo recién escrito. Salir del campo solo
+ * normaliza el texto y muestra el error. Pasar el foco sin escribir no
+ * reporta nada, así que no convierte un precio de catálogo en uno «a mano».
  */
 export function PrecioCampo({
   centavos,
@@ -37,6 +49,16 @@ export function PrecioCampo({
 }) {
   const [valor, setValor] = useState(() => texto(centavos));
   const [error, setError] = useState<string | null>(null);
+  // Si el padre cambia el valor (p. ej. «usar precios del catálogo» o un
+  // refetch), el texto lo sigue. Se ajusta en render, sin efecto.
+  const [ultimo, setUltimo] = useState(centavos);
+  if (centavos !== ultimo) {
+    setUltimo(centavos);
+    if (centavos !== parsear(valor)) {
+      setValor(texto(centavos));
+      setError(null);
+    }
+  }
 
   return (
     <TextField
@@ -44,21 +66,19 @@ export function PrecioCampo({
       className={cn("w-28", className)}
       isInvalid={error != null}
       value={valor}
-      onChange={setValor}
+      onChange={(v) => {
+        setValor(v);
+        setError(null);
+        const next = parsear(v);
+        setUltimo(next);
+        onChange(next);
+      }}
       onBlur={() => {
-        if (valor.trim() === "") {
-          setError(null);
-          onChange(null);
-          return;
-        }
+        if (valor.trim() === "") return;
         try {
-          const next = quetzalesTextoACentavos(valor);
-          setError(null);
-          setValor(texto(next));
-          onChange(next);
+          setValor(texto(quetzalesTextoACentavos(valor)));
         } catch (err) {
           setError(err instanceof Error ? err.message : "Precio inválido");
-          onChange(null);
         }
       }}
     >

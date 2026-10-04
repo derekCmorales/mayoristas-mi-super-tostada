@@ -36,6 +36,7 @@ import {
 } from "./pedido-reglas";
 import { restaurarBonosDePedido } from "./pedido-bono";
 import {
+  bloquearPedidoParaItems,
   buscarPedidoPortalAbierto,
   clienteDe,
   escribirItems,
@@ -118,6 +119,7 @@ export class PedidoService {
             clienteRow.id,
             fechaOperacion,
           );
+          if (existente) await bloquearPedidoParaItems(tx, existente.id);
           const itemsAntes = existente
             ? await itemsDe(tx, existente.id)
             : [];
@@ -545,6 +547,7 @@ export class PedidoService {
         row.fechaOperacion,
         relojVivo,
       );
+      await bloquearPedidoParaItems(tx, row.id);
       const itemsAntes = await itemsDe(tx, row.id);
       const congelados = await resolverSnapshotsConBonos(
         tx,

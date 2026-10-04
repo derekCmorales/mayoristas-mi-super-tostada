@@ -51,6 +51,12 @@ Estas producen bugs caros si se rompen. No las replantees.
   permiso `precios.cambiar`, motivo obligatorio, `audit_log`. Si el pedido ya se entregó, también
   mueve el monto de la factura y deja el cambio en `factura_ajuste`; nunca la baja por debajo de lo
   abonado. Un precio puesto a mano en la captura vale solo para ese pedido.
+- Un precio puesto a mano (captura o corrección distinta del catálogo) queda marcado en
+  `pedido_item.precio_manual` y **«Recalcular precios» no lo toca**: es un precio negociado, no un
+  snapshot mal nacido. `PATCH /pedidos/:id/items` nunca cambia el precio de una línea ya capturada
+  (`PRECIO_LINEA_CAPTURADA`); toda edición de líneas bloquea el pedido (`bloquearPedidoParaItems`)
+  para no pisar una corrección concurrente. Aplicar el recálculo exige la vista previa aprobada
+  (`esperado`): si el servidor calcula otra cosa, rechaza con `VISTA_PREVIA_VENCIDA`.
 
 ### 2.3 Zona horaria
 - Zona del negocio: `America/Guatemala` (UTC−6, sin horario de verano).

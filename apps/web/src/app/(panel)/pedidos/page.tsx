@@ -572,6 +572,7 @@ function PedidosInner() {
       {recalcular && desde ? (
         <DialogoRecalcularPrecios
           fechaOperacion={desde}
+          fechaOperacionEnCurso={fechaHoy || undefined}
           onClose={() => setRecalcular(false)}
         />
       ) : null}

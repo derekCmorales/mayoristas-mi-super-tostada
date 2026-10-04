@@ -22,11 +22,12 @@ export type ItemSnapshot = {
   esDevolucion: boolean;
   bonoId: string | null;
   /**
-   * Presente cuando el panel puso el precio a mano y difiere del que tocaba
-   * (catálogo para una línea nueva, snapshot para una existente). No se
-   * persiste en `pedido_item`; queda en `audit_log` como evidencia.
+   * Presente cuando el panel puso a mano el precio de una línea nueva y
+   * difiere del catálogo. Queda en `audit_log` como evidencia.
    */
   precioFijado?: { porDefectoCentavos: number | null };
+  /** Persistido en `pedido_item.precio_manual`. Ver schema. */
+  precioManual?: boolean;
 };
 
 export function horarioDe(
@@ -67,12 +68,7 @@ export function exigirAnulable(estado: string): void {
   }
 }
 
-/** Precio puesto a mano en el panel: mismo permiso que cambiar el catálogo. */
-export function exigirPermisoPrecioFijado(
-  actor: Actor,
-  snapshots: ItemSnapshot[],
-): void {
-  if (!snapshots.some((s) => s.precioFijado)) return;
+export function exigirPermisoPrecios(actor: Actor): void {
   if (!tienePermiso(actor.permisos, "precios.cambiar")) {
     throw new DomainException(
       "PERMISO_DENEGADO",
@@ -80,6 +76,14 @@ export function exigirPermisoPrecioFijado(
       403,
     );
   }
+}
+
+/** Precio puesto a mano en el panel: mismo permiso que cambiar el catálogo. */
+export function exigirPermisoPrecioFijado(
+  actor: Actor,
+  snapshots: ItemSnapshot[],
+): void {
+  if (snapshots.some((s) => s.precioFijado)) exigirPermisoPrecios(actor);
 }
 
 export function exigirConfirmado(estado: string): void {
@@ -111,12 +115,11 @@ export function congelarSnapshots(
       ...item,
       nombreMostrado: previo.nombreMostrado,
       unidadMedida: previo.unidadMedida,
-      // El snapshot se respeta salvo que el panel lo haya fijado a mano.
+      // El snapshot se respeta. Cambiarlo es «Corregir precios», con motivo.
       precioUnitarioCentavos: item.esDevolucion
         ? 0
-        : item.precioFijado
-          ? item.precioUnitarioCentavos
-          : previo.precioUnitarioCentavos,
+        : previo.precioUnitarioCentavos,
+      precioManual: previo.precioManual ?? false,
       bonoId: item.esDevolucion ? item.bonoId : null,
     };
   });

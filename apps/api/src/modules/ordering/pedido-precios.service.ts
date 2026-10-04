@@ -10,12 +10,14 @@ import {
 import {
   MENSAJE_AJUSTE_BAJO_ABONADO,
   MENSAJE_PEDIDO_ANULADO,
+  MENSAJE_VISTA_PREVIA_VENCIDA,
   ajustarPreciosPedidoRequestSchema,
   ajustePrecioPedidoSchema,
+  montoFacturaCentavos,
   precioEfectivoCentavos,
   recalcularPreciosRequestSchema,
   recalcularPreciosResultadoSchema,
-  tienePermiso,
+  totalPedidoCentavos,
   type AjustePrecioPedido,
   type PedidoDetalle,
   type RecalcularPreciosResultado,
@@ -32,6 +34,7 @@ import {
   type FacturaAjuste,
 } from "../receivables/factura-ajuste";
 import { PedidoEvents } from "./pedido-events";
+import { exigirPermisoPrecios } from "./pedido-reglas";
 import { presentarPedidoPanel } from "./pedido-presentacion";
 
 type PedidoRow = typeof pedido.$inferSelect;
@@ -40,7 +43,8 @@ type LineaRow = typeof pedidoItem.$inferSelect;
 type Plan = {
   vista: AjustePrecioPedido;
   pedido: PedidoRow;
-  nuevos: Map<string, number>;
+  /** Valor de `precio_manual` para cada línea que cambia. */
+  manual: Map<string, boolean>;
 };
 
 type OrigenAjuste = "MANUAL" | "CATALOGO";
@@ -58,6 +62,8 @@ type OrigenAjuste = "MANUAL" | "CATALOGO";
  *   que deja su propio rastro en `factura_ajuste`. Si Carla ya capturó DTE, la
  *   respuesta lo trae para que el panel avise de la nota de crédito/débito.
  * - Nunca baja una factura por debajo de lo ya abonado: no hay devoluciones.
+ * - El recálculo con catálogo respeta las líneas con `precio_manual`: un
+ *   precio negociado a propósito no es un snapshot mal nacido.
  *
  * Cantidades, nombres y hoja de producción no se tocan: el día puede estar
  * cerrado y producción no se entera.
@@ -108,7 +114,13 @@ export class PedidoPreciosService {
         );
       }
       const nombre = await nombreCliente(tx, row.clienteId);
-      const plan = await this.planear(tx, row, nombre, lineas, nuevos);
+      const catalogo = await preciosDeCatalogo(tx, actor.organizacionId, [
+        row.clienteId,
+      ]);
+      // Igual al catálogo deja de ser «a mano»: el recálculo ya puede tocarlo.
+      const plan = await this.planear(tx, row, nombre, lineas, nuevos, (p, c) =>
+        c !== catalogo(row.clienteId, p),
+      );
       if (plan.vista.omitido) {
         throw new DomainException(
           "AJUSTE_BAJO_ABONADO",
@@ -183,10 +195,16 @@ export class PedidoPreciosService {
       for (const row of pedidos) {
         const lineas = todasLasLineas.filter((l) => l.pedidoId === row.id);
         const nuevos = new Map<string, number>();
+        let lineasManuales = 0;
         for (const l of lineas) {
           if (l.esDevolucion) continue;
           const precio = precios(row.clienteId, l.productoId);
-          if (precio != null) nuevos.set(l.productoId, precio);
+          if (precio == null || precio === l.precioUnitarioCentavos) continue;
+          if (l.precioManual) {
+            lineasManuales += 1;
+            continue;
+          }
+          nuevos.set(l.productoId, precio);
         }
         const plan = await this.planear(
           tx,
@@ -194,12 +212,47 @@ export class PedidoPreciosService {
           nombres.get(row.clienteId) ?? "",
           lineas,
           nuevos,
+          () => false,
         );
-        if (plan.vista.cambios.length === 0) continue;
-        if (input.aplicar && input.motivo && !plan.vista.omitido) {
-          await this.aplicar(tx, plan, input.motivo, "CATALOGO", actor);
+        plan.vista.lineasManuales = lineasManuales;
+        if (plan.vista.cambios.length > 0) planes.push(plan);
+      }
+      if (!input.aplicar || !input.motivo) return planes;
+
+      // Solo se escribe lo que el usuario vio y aprobó.
+      const aplicables = planes.filter((p) => !p.vista.omitido);
+      const esperado = new Map(
+        (input.esperado ?? []).map((e) => [e.pedidoId, e.totalDespuesCentavos]),
+      );
+      const coincide =
+        aplicables.length === esperado.size &&
+        aplicables.every(
+          (p) => esperado.get(p.vista.pedidoId) === p.vista.totalDespuesCentavos,
+        );
+      if (!coincide) {
+        throw new DomainException(
+          "VISTA_PREVIA_VENCIDA",
+          MENSAJE_VISTA_PREVIA_VENCIDA,
+          409,
+        );
+      }
+      for (const plan of aplicables) {
+        // Savepoint por pedido: un abono que entra a media corrida deja ese
+        // pedido sin tocar, no tumba los demás.
+        try {
+          await tx.transaction((sp) =>
+            this.aplicar(sp, plan, input.motivo!, "CATALOGO", actor),
+          );
+        } catch (err) {
+          if (
+            err instanceof DomainException &&
+            err.code === "AJUSTE_BAJO_ABONADO"
+          ) {
+            plan.vista.omitido = MENSAJE_AJUSTE_BAJO_ABONADO;
+            continue;
+          }
+          throw err;
         }
-        planes.push(plan);
       }
       return planes;
     });
@@ -223,12 +276,11 @@ export class PedidoPreciosService {
     clienteNombre: string,
     lineas: LineaRow[],
     nuevos: Map<string, number>,
+    esManual: (productoId: string, precioCentavos: number) => boolean,
   ): Promise<Plan> {
     // La factura se calcula sobre lo entregado (§5); antes de entregar, sobre
     // lo pedido.
     const entregado = row.estado === "ENTREGADO";
-    const cantidad = (l: LineaRow) =>
-      entregado ? l.cantidadEntregada : l.cantidadPedida;
     const precioNuevo = (l: LineaRow) =>
       l.esDevolucion
         ? l.precioUnitarioCentavos
@@ -242,14 +294,23 @@ export class PedidoPreciosService {
         antesCentavos: l.precioUnitarioCentavos,
         despuesCentavos: precioNuevo(l),
       }));
-    const totalAntesCentavos = lineas.reduce(
-      (acc, l) => acc + cantidad(l) * l.precioUnitarioCentavos,
-      0,
-    );
-    const totalDespuesCentavos = lineas.reduce(
-      (acc, l) => acc + cantidad(l) * precioNuevo(l),
-      0,
-    );
+    // Misma regla que EntregaService para la factura; la del pedido si no.
+    const total = (precio: (l: LineaRow) => number) =>
+      entregado
+        ? montoFacturaCentavos(
+            lineas.map((l) => ({
+              cantidadEntregada: l.cantidadEntregada,
+              precioUnitarioCentavos: precio(l),
+            })),
+          )
+        : totalPedidoCentavos(
+            lineas.map((l) => ({
+              cantidad: l.cantidadPedida,
+              precioUnitarioCentavos: precio(l),
+            })),
+          );
+    const totalAntesCentavos = total((l) => l.precioUnitarioCentavos);
+    const totalDespuesCentavos = total(precioNuevo);
 
     const factura =
       cambios.length > 0 ? await this.facturas.vistaDePedido(tx, row.id) : null;
@@ -260,7 +321,9 @@ export class PedidoPreciosService {
 
     return {
       pedido: row,
-      nuevos,
+      manual: new Map(
+        cambios.map((c) => [c.productoId, esManual(c.productoId, c.despuesCentavos)]),
+      ),
       vista: ajustePrecioPedidoSchema.parse({
         pedidoId: row.id,
         correlativo: row.correlativo,
@@ -288,7 +351,10 @@ export class PedidoPreciosService {
     for (const c of vista.cambios) {
       await tx
         .update(pedidoItem)
-        .set({ precioUnitarioCentavos: c.despuesCentavos })
+        .set({
+          precioUnitarioCentavos: c.despuesCentavos,
+          precioManual: plan.manual.get(c.productoId) ?? false,
+        })
         .where(
           and(
             eq(pedidoItem.pedidoId, vista.pedidoId),
@@ -362,16 +428,6 @@ export class PedidoPreciosService {
         });
       }
     }
-  }
-}
-
-function exigirPermisoPrecios(actor: Actor): void {
-  if (!tienePermiso(actor.permisos, "precios.cambiar")) {
-    throw new DomainException(
-      "PERMISO_DENEGADO",
-      "No tiene permiso para cambiar precios",
-      403,
-    );
   }
 }
 

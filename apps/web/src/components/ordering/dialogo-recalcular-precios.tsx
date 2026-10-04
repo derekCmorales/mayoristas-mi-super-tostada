@@ -30,9 +30,12 @@ import { Money } from "@/components/domain/money";
  */
 export function DialogoRecalcularPrecios({
   fechaOperacion,
+  fechaOperacionEnCurso,
   onClose,
 }: {
   fechaOperacion: string;
+  /** La que se reparte hoy. Antes de esa, el catálogo pudo haber subido. */
+  fechaOperacionEnCurso?: string;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -51,10 +54,20 @@ export function DialogoRecalcularPrecios({
   });
 
   const aplicar = useMutation({
+    // Manda lo que el usuario está viendo: si el servidor calcula otra cosa,
+    // rechaza en vez de escribir pedidos o montos que nadie aprobó.
     mutationFn: () =>
       api<RecalcularPreciosResultado>("/pedidos/recalcular-precios", {
         method: "POST",
-        body: JSON.stringify({ fechaOperacion, motivo, aplicar: true }),
+        body: JSON.stringify({
+          fechaOperacion,
+          motivo,
+          aplicar: true,
+          esperado: aplicables.map((p) => ({
+            pedidoId: p.pedidoId,
+            totalDespuesCentavos: p.totalDespuesCentavos,
+          })),
+        }),
       }),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ["pedidos"] });
@@ -70,12 +83,18 @@ export function DialogoRecalcularPrecios({
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : "No se pudo recalcular");
       toastFromError(err, "No se pudieron recalcular los precios");
+      // La vista previa quedó vieja (o falló por otra cosa): se vuelve a pedir
+      // para que lo que se ve sea lo que se aplicaría.
+      void previa.refetch();
     },
   });
 
   const pedidos = previa.data?.pedidos ?? [];
   const aplicables = pedidos.filter((p) => !p.omitido);
   const conDte = aplicables.filter((p) => p.ajustaFactura && p.numeroDte);
+  const manuales = pedidos.reduce((acc, p) => acc + p.lineasManuales, 0);
+  const diaPasado =
+    fechaOperacionEnCurso != null && fechaOperacion < fechaOperacionEnCurso;
   const formId = `recalcular-${fechaOperacion}`;
 
   return (
@@ -130,6 +149,29 @@ export function DialogoRecalcularPrecios({
                   ))}
                 </ul>
               )}
+
+              {diaPasado && aplicables.length > 0 ? (
+                <Alert status="warning">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>Es una operación pasada</Alert.Title>
+                    <Alert.Description>
+                      Se compara con el catálogo de hoy. Si los precios subieron
+                      desde entonces, esto cobraría el precio nuevo. Úselo solo
+                      si esos pedidos se tomaron con un precio equivocado.
+                    </Alert.Description>
+                  </Alert.Content>
+                </Alert>
+              ) : null}
+
+              {manuales > 0 ? (
+                <p className="text-[12px] text-tinta-500">
+                  {manuales === 1
+                    ? "1 línea con precio puesto a mano se respeta."
+                    : `${manuales} líneas con precio puesto a mano se respetan.`}{" "}
+                  Para cambiarlas, use «Corregir precios» en cada pedido.
+                </p>
+              ) : null}
 
               {conDte.length > 0 ? (
                 <Alert status="warning">

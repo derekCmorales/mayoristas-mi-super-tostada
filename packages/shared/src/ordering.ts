@@ -360,6 +360,10 @@ export const MENSAJE_MOTIVO_ANULACION =
   "Indique el motivo. El pedido queda anulado, no se borra.";
 export const MENSAJE_MOTIVO_AJUSTE_PRECIO =
   "Indique el motivo del cambio de precio. Queda en el historial.";
+export const MENSAJE_PRECIO_LINEA_CAPTURADA =
+  "Esa línea ya tiene precio. Para cambiarlo use «Corregir precios»: pide motivo.";
+export const MENSAJE_VISTA_PREVIA_VENCIDA =
+  "Los pedidos o el catálogo cambiaron desde la vista previa. Revísela de nuevo.";
 export const MENSAJE_AJUSTE_BAJO_ABONADO =
   "Esta factura ya tiene abonado más que el nuevo total. Corrija el abono antes de bajar el precio.";
 
@@ -547,10 +551,27 @@ export const recalcularPreciosRequestSchema = z
     /** Obligatorio al aplicar; la vista previa no escribe nada. */
     motivo: motivoAjustePrecioSchema.optional(),
     aplicar: z.boolean().default(false),
+    /**
+     * Al aplicar: los pedidos que el usuario vio en la vista previa, con su
+     * total nuevo. Si el servidor calcula otra cosa —llegó un pedido, cambió
+     * el catálogo, entró un abono—, rechaza en vez de escribir lo no visto.
+     */
+    esperado: z
+      .array(
+        z.object({
+          pedidoId: z.string().uuid(),
+          totalDespuesCentavos: centavosSchema,
+        }),
+      )
+      .optional(),
   })
   .refine((r) => !r.aplicar || r.motivo, {
     message: MENSAJE_MOTIVO_AJUSTE_PRECIO,
     path: ["motivo"],
+  })
+  .refine((r) => !r.aplicar || r.esperado, {
+    message: MENSAJE_VISTA_PREVIA_VENCIDA,
+    path: ["esperado"],
   });
 
 export type RecalcularPreciosRequest = z.infer<
@@ -581,6 +602,8 @@ export const ajustePrecioPedidoSchema = z.object({
   numeroDte: z.string().nullable(),
   /** Por qué no se toca (p. ej. abonado mayor al nuevo total). */
   omitido: z.string().nullable(),
+  /** Líneas con precio puesto a mano que el recálculo respeta. */
+  lineasManuales: z.number().int().nonnegative().default(0),
 });
 
 export type AjustePrecioPedido = z.infer<typeof ajustePrecioPedidoSchema>;

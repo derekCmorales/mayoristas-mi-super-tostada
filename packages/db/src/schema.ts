@@ -309,6 +309,11 @@ export const pedidoItem = pgTable("pedido_item", {
   unidadMedida: unidadMedidaEnum("unidad_medida").notNull(),
   esDevolucion: boolean("es_devolucion").notNull().default(false),
   bonoId: uuid("bono_id").references(() => clienteBono.id),
+  /**
+   * El precio lo puso alguien a mano (captura o «Corregir precios») y difiere
+   * del catálogo. «Recalcular precios» no lo toca: era a propósito.
+   */
+  precioManual: boolean("precio_manual").notNull().default(false),
 });
 
 export const factura = pgTable(

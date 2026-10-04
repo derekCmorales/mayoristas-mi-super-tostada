@@ -55,7 +55,24 @@ export async function itemsDe(
     precioUnitarioCentavos: item.precioUnitarioCentavos,
     esDevolucion: item.esDevolucion,
     bonoId: item.bonoId ?? null,
+    precioManual: item.precioManual,
   }));
+}
+
+/**
+ * Bloquea el pedido antes de leer sus líneas para reemplazarlas. Sin esto,
+ * una corrección de precio que confirma en medio quedaba pisada por el
+ * snapshot viejo leído antes (el `audit_log` decía corregido y no lo estaba).
+ */
+export async function bloquearPedidoParaItems(
+  tx: AppDatabase,
+  pedidoId: string,
+): Promise<void> {
+  await tx
+    .select({ id: pedido.id })
+    .from(pedido)
+    .where(eq(pedido.id, pedidoId))
+    .for("update");
 }
 
 export async function insertarPedido(
@@ -112,6 +129,7 @@ export async function escribirItems(
       unidadMedida: item.unidadMedida,
       esDevolucion: item.esDevolucion,
       bonoId: item.bonoId,
+      precioManual: item.precioManual ?? false,
     })),
   );
 }

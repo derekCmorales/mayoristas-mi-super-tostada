@@ -43,9 +43,6 @@ export function DialogoAjustePrecios({
       lineas.map((l) => [l.productoId, l.precioUnitarioCentavos]),
     ),
   );
-  // Los campos guardan su propio texto: al rellenar desde el catálogo se
-  // remontan para mostrar el valor nuevo.
-  const [version, setVersion] = useState(0);
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -116,7 +113,6 @@ export function DialogoAjustePrecios({
       }
       return next;
     });
-    setVersion((v) => v + 1);
   }
 
   const formId = `ajuste-precios-${pedido.id}`;
@@ -148,8 +144,11 @@ export function DialogoAjustePrecios({
             >
               {difierenDelCatalogo ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-campo bg-[var(--ink-50)] px-3 py-2 text-sm">
-                  <span className="text-tinta-700">
+                  <span className="min-w-0 flex-1 text-tinta-700">
                     Hay líneas con un precio distinto al del catálogo actual.
+                    {entregado
+                      ? " Ojo: es el catálogo de hoy, no el del día del pedido."
+                      : null}
                   </span>
                   <Button size="sm" variant="secondary" onPress={usarCatalogo}>
                     Usar precios del catálogo
@@ -189,7 +188,6 @@ export function DialogoAjustePrecios({
                         </p>
                       </div>
                       <PrecioCampo
-                        key={`${l.productoId}-${version}`}
                         centavos={nuevo}
                         onChange={(c) =>
                           setPrecios((prev) => ({ ...prev, [l.productoId]: c }))

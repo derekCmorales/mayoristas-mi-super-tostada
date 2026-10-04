@@ -232,8 +232,13 @@ export function PedidoDetalle({
 
   const puedeAjustarPrecios =
     puedeCambiarPrecio && pedido.estado !== "ANULADO";
+  // Solo antes de entregar: un pedido viejo contra el catálogo de hoy siempre
+  // «difiere» después de una subida normal, y ahí no hay nada que corregir.
+  const pendienteDeEntregar =
+    pedido.estado === "CONFIRMADO" || pedido.estado === "EN_PRODUCCION";
   const lineasFueraDeCatalogo = pedido.items.filter(
     (i) =>
+      pendienteDeEntregar &&
       !i.esDevolucion &&
       i.precioCatalogoCentavos != null &&
       i.precioCatalogoCentavos !== i.precioUnitarioCentavos,

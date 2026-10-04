@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { clienteProducto, producto } from "@misupertostada/db";
 import {
   MENSAJE_PRECIO_AUSENTE,
+  MENSAJE_PRECIO_LINEA_CAPTURADA,
   precioEfectivoCentavos,
 } from "@misupertostada/shared";
 import type { AppDatabase } from "../shared/database.module";
@@ -20,9 +21,8 @@ type ItemInput = {
 };
 
 /**
- * Aplica el precio puesto a mano, si lo hay y difiere del que tocaba. Un
- * precio igual no cuenta como fijado: el panel reenvía el snapshot al editar
- * cantidades y eso no debe exigir `precios.cambiar`.
+ * Aplica el precio puesto a mano a una línea nueva, si difiere del catálogo.
+ * Un precio igual no cuenta como fijado ni exige `precios.cambiar`.
  */
 function conPrecioFijado(
   snapshot: ItemSnapshot,
@@ -35,6 +35,7 @@ function conPrecioFijado(
     ...snapshot,
     precioUnitarioCentavos: fijado,
     precioFijado: { porDefectoCentavos },
+    precioManual: true,
   };
 }
 
@@ -92,11 +93,20 @@ export async function tasarItemsPagados(
       const clave = `${item.productoId}:0`;
       const ya = previoPorClave.get(clave);
       if (ya) {
-        return conPrecioFijado(
-          { ...ya, cantidad: item.cantidad },
-          item,
-          ya.precioUnitarioCentavos,
-        );
+        // Una línea ya capturada no cambia de precio por aquí: eso es
+        // «Corregir precios», que exige motivo (§2.2). Reenviar el mismo
+        // snapshot sí vale.
+        if (
+          item.precioUnitarioCentavos !== undefined &&
+          item.precioUnitarioCentavos !== ya.precioUnitarioCentavos
+        ) {
+          throw new DomainException(
+            "PRECIO_LINEA_CAPTURADA",
+            MENSAJE_PRECIO_LINEA_CAPTURADA,
+            409,
+          );
+        }
+        return { ...ya, cantidad: item.cantidad };
       }
       const prod = porId.get(item.productoId);
       const liga = ligaPorProducto.get(item.productoId);

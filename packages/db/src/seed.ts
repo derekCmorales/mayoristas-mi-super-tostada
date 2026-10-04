@@ -1,10 +1,13 @@
 /**
  * Seed con los datos de CONTEXT.md §5.
- * Idempotente y **solo de inserción**: correrlo sobre una base viva no cambia
- * nada que ya exista (precios, nombres, notas, `activo`). Lo nuevo entra; lo
- * editado desde el panel se respeta. `seed.test.ts` lo vigila.
+ * Idempotente y **solo de inserción** en producción: correrlo sobre una base
+ * viva no cambia nada que ya exista (precios, nombres, notas, `activo`). Lo
+ * nuevo entra; lo editado desde el panel se respeta. `seed.test.ts` lo vigila.
  * En producción no hay usuarios ni token de portal de demo.
- * En desarrollo (D5) Tabasco Casa Vieja recibe alias de demo y un token conocido.
+ * Solo en desarrollo (D5) además **reescribe** datos de demo en cada corrida:
+ * alias/favoritos/nota de Tabasco Casa Vieja y los tokens de portal de todos
+ * los clientes (para que los links de demo sean conocidos). No lo corras en
+ * una base de staging con datos de verdad sin `NODE_ENV=production`.
  */
 import { resolve } from "node:path";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
