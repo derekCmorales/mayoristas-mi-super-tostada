@@ -43,8 +43,10 @@ export class ConexionWabaService {
    * tests tiene muchas; elegir una al azar mandaría WhatsApps reales desde ahí.
    *
    * Al pasar de DESARROLLO a CONECTADO, las plantillas sembradas por el fake
-   * dejan de contar como aprobadas: Meta no las conoce. Quedan en PENDING hasta
-   * que la sincronización traiga el estado real.
+   * pasan a DELETED: Meta no las conoce. No se borra la fila: al crear la real
+   * con el mismo nombre desde Configuración se reutiliza (upsert por nombre e
+   * idioma), y su propósito sigue mapeado. Con PENDING el panel la daría por
+   * duplicada y no dejaría crearla.
    */
   async importarDesdeEnv(): Promise<void> {
     const env = loadEnv();
@@ -86,7 +88,7 @@ export class ConexionWabaService {
         if (actual?.estado !== "CONECTADO") {
           await tx
             .update(plantillaWa)
-            .set({ status: "PENDING" })
+            .set({ status: "DELETED" })
             .where(
               and(
                 eq(plantillaWa.organizacionId, organizacionId),
