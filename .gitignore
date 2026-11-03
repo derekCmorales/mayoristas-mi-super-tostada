@@ -17,3 +17,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .claude/
+
+# Valores reales de producción para pegar en Openship. Nunca en git.
+deploy/openship.env

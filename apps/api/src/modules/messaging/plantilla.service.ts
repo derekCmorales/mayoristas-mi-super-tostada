@@ -49,13 +49,6 @@ export const PLANTILLAS_FAKE: Array<{
     language: "es",
     body: "Le compartimos su estado de cuenta: {{1}} facturas pendientes por {{2}}.",
   },
-  {
-    name: "mst_consolidado_v1",
-    proposito: "CONSOLIDADO",
-    category: "UTILITY",
-    language: "es",
-    body: "Pedido consolidado para {{1}} (v{{2}}).",
-  },
 ];
 
 @Injectable()
@@ -81,7 +74,10 @@ export class PlantillaService {
       .from(plantillaProposito)
       .where(eq(plantillaProposito.organizacionId, organizacionId));
     const porPlantilla = new Map(
-      mapas.map((m) => [m.plantillaWaId, m.proposito as PlantillaProposito]),
+      // Una base vieja puede tener mapeado CONSOLIDADO, propósito retirado.
+      mapas
+        .filter((m) => esProposito(m.proposito))
+        .map((m) => [m.plantillaWaId, m.proposito as PlantillaProposito]),
     );
     return rows.map((row) =>
       plantillaWaPublicaSchema.parse({

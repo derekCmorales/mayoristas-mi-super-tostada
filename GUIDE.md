@@ -19,8 +19,7 @@ operación, aunque cruce la medianoche.**
 La ventana abre el lunes a las 15:00 y cierra el martes a las 03:00. Todo lo que
 entre ahí dentro —las 16:00, las 23:00, la 01:00, las 02:00— pertenece a **la
 operación del lunes**. No importa que el reloj ya diga martes. Esa es la unidad
-de trabajo: una operación tiene una hoja de producción, un cierre, una ruta y un
-consolidado.
+de trabajo: una operación tiene una hoja de producción, un cierre y una ruta.
 
 Esto no es un detalle técnico, es el modelo del negocio: los restaurantes cierran
 entre 21:00 y 22:00 y hasta entonces saben qué necesitan. Pedir después de
@@ -106,8 +105,8 @@ cada minuto si ya tocó.
 
 **El cierre es el momento importante del día.** Es cuando se materializa la hoja de
 producción. Antes del cierre la hoja no existe — a propósito, para que Alex nunca
-abra la pantalla y vea datos a medias que todavía van a cambiar. Al cerrar también
-sale el consolidado.
+abra la pantalla y vea datos a medias que todavía van a cambiar. No se manda nada
+por WhatsApp: Alex y Carla abren la hoja en el panel.
 
 Cristian puede cerrar antes desde `/hoy` si ya vio que no falta nadie.
 

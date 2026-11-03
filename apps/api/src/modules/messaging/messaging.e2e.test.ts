@@ -497,7 +497,7 @@ describe.skipIf(!listo)("mensajería E7", () => {
     }
   });
 
-  test("recerrar el día no manda segundo consolidado", async () => {
+  test("el cierre se da por procesado sin enviar WhatsApp", async () => {
     const clock = relojControlado(instanteGT("2026-08-21T00:05:00"));
     const f = await fixture(clock);
     try {
@@ -527,8 +527,9 @@ describe.skipIf(!listo)("mensajería E7", () => {
           payload: { organizacionId: f.orgId, fechaOperacion: "2026-08-21", version: 1 },
         })
         .returning({ id: outbox.id });
-      expect(await f.processor.processRow(first[0]!.id)).toBe("enviado");
       const before = f.fake.envios.length;
+      expect(await f.processor.processRow(first[0]!.id)).toBe("enviado");
+      expect(f.fake.envios.length).toBe(before);
       const second = await f.db
         .insert(outbox)
         .values({

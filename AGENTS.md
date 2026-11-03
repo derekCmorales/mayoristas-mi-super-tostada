@@ -177,7 +177,7 @@ packages/
 
 ```
 PedidoConfirmado        → messaging (confirmación al cliente)
-VentanaPedidoCerrada    → fulfillment (genera hoja) · messaging (consolidado)
+VentanaPedidoCerrada    → fulfillment (genera hoja). Sin WhatsApp: producción y tienda leen la hoja en el panel
 PedidoEntregado         → receivables (crea factura pendiente)
 PagoRegistrado          → receivables (recalcula saldo) · analytics
 LimiteCreditoExcedido   → messaging (alerta al admin)

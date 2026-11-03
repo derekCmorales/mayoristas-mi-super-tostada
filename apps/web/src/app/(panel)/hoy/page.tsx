@@ -700,7 +700,7 @@ function HoyInner() {
                     <p className="text-sm leading-relaxed text-pretty text-[var(--green-100)]">
                       {capturaReabierta
                         ? "La hoja que ya imprimieron quedó vieja. Al cerrar de nuevo sale la hoja corregida, con los cambios resaltados."
-                        : "Al cerrar se materializa la hoja de producción. El consolidado queda listo para descargar y enviar por WhatsApp. Un solo paso."}
+                        : "Al cerrar se materializa la hoja de producción. Alex y Carla la ven en el panel. Un solo paso."}
                     </p>
                     {capturaReabierta && (
                       <p className="flex gap-2 rounded-campo border border-[var(--yellow-400)]/35 bg-[var(--yellow-100)]/90 px-3 py-2.5 text-sm leading-relaxed text-pretty text-[var(--amber-700)]">

@@ -234,12 +234,11 @@ describe("contrato de bandeja enriquecido", () => {
 });
 
 describe("constantes de plataforma", () => {
-  test("los cuatro propósitos y el copy operativo están fijos", () => {
+  test("los tres propósitos y el copy operativo están fijos", () => {
     expect([...PLANTILLA_PROPOSITOS]).toEqual([
       "INVITACION",
       "CONFIRMACION",
       "ESTADO_CUENTA",
-      "CONSOLIDADO",
     ]);
     expect(META_ERROR_VENTANA_CERRADA).toBe("131047");
     expect(MENSAJE_VENTANA_WA_CERRADA).toMatch(/aviso/i);

@@ -20,9 +20,8 @@ Referencias técnicas:
 | 1 | `INVITACION` | `mst_invitacion_v1` | UTILITY | Sí — cron 18:00 GT | Cada cliente activo con teléfono WA |
 | 2 | `CONFIRMACION` | `mst_confirmacion_v1` | UTILITY | Sí — al confirmar pedido | Cliente que acaba de pedir |
 | 3 | `ESTADO_CUENTA` | `mst_estado_cuenta_v1` | UTILITY | Sí — recordatorio manual desde cartera | Cliente con facturas pendientes |
-| 4 | `CONSOLIDADO` | `mst_consolidado_v1` | UTILITY | Sí — al cerrar la ventana | Números internos de producción y tienda |
 
-**Total a verificar con Meta: 4 plantillas** (más texto libre dentro de la ventana de 24 h, que no requiere plantilla).
+**Total a verificar con Meta: 3 plantillas** (más texto libre dentro de la ventana de 24 h, que no requiere plantilla).
 
 El sistema **no hardcodea** nombres en producción: sincroniza desde Graph API y mapea cada propósito
 a una plantilla aprobada desde el panel (`GET /mensajeria/plantillas`, `POST /mensajeria/plantillas/mapear`).
@@ -43,7 +42,7 @@ Estas reglas están codificadas en `validarParametrosPlantilla()` y el despachad
 | Categoría UTILITY para operación transaccional | MARKETING tiene restricciones de ventana y calidad distintas |
 
 **Implicación de diseño:** el detalle de un pedido (líneas, cantidades, alias) va en **texto libre**
-solo cuando la ventana de 24 h está abierta. Fuera de ella, el consolidado va en **PDF adjunto**,
+solo cuando la ventana de 24 h está abierta. Fuera de ella, el estado de cuenta va en **PDF adjunto**,
 no en variables de plantilla.
 
 ---
@@ -56,7 +55,6 @@ Evento de negocio          Outbox / acción manual          Propósito          
 Cron 18:00 GT              InvitacionDiaria                INVITACION          mst_invitacion_v1
 Pedido confirmado          PedidoConfirmado                CONFIRMACION        mst_confirmacion_v1
 Clic en cartera            RecordatorioCobro                 ESTADO_CUENTA       mst_estado_cuenta_v1
-Cierre de ventana          VentanaPedidoCerrada            CONSOLIDADO         mst_consolidado_v1
 Mensaje manual (panel)     POST /conversaciones/:id/enviar  (cualquiera APPROVED o texto libre)
 ```
 
@@ -64,10 +62,10 @@ Flujo de conexión con Meta:
 
 1. **Embedded Signup** — registrar la WABA bajo la app de Tech Provider (`conexion.service.ts`).
 2. **Sincronizar plantillas** — `POST /mensajeria/plantillas/sync` trae estado y componentes desde Graph API.
-3. **Mapear propósitos** — asociar cada `INVITACION | CONFIRMACION | ESTADO_CUENTA | CONSOLIDADO` a la plantilla aprobada correspondiente.
+3. **Mapear propósitos** — asociar cada `INVITACION | CONFIRMACION | ESTADO_CUENTA` a la plantilla aprobada correspondiente.
 4. **Webhook `message_template_status_update`** — si Meta pausa o rechaza una plantilla, el estado se actualiza en BD y el envío se bloquea con `PLANTILLA_NO_APROBADA`.
 
-En desarrollo (sin credenciales Meta) el sistema usa `FakeWhatsAppAdapter` con las cuatro plantillas
+En desarrollo (sin credenciales Meta) el sistema usa `FakeWhatsAppAdapter` con las tres plantillas
 sembradas automáticamente; no hace falta Meta para programar.
 
 ---
@@ -100,14 +98,13 @@ Buenas noches. Ya está abierta la toma de pedidos para {{1}}. Puede responder a
 |------------|-------|
 | Tipo | URL (índice 0) |
 | Texto del botón | `Abrir portal` (o similar, ≤ 25 caracteres) |
-| URL en plantilla | `{{1}}` — la variable es la **URL completa** |
+| URL en plantilla | `https://pedidos.misupertostada.com/p/{{1}}` — tipo **dinámica** |
 
-El sistema envía en `buttonParams` la URL ya armada: `{WEB_ORIGIN}/p/{token}`.
-Ejemplo: `https://app.misupertostada.com/p/a1b2c3d4…`
+Meta no acepta una URL que sea solo `{{1}}`: el dominio va fijo y la variable al final.
+El sistema envía en `buttonParams` **solo el token**; Meta lo pega al final de la URL.
 
-> Al crear la plantilla en Meta, la URL del botón debe ser una sola variable `{{1}}` que reciba
-> la URL completa. En la solicitud de aprobación, usar una URL de ejemplo con un token ficticio
-> del mismo dominio de producción (`WEB_ORIGIN`).
+> En la solicitud de aprobación, el ejemplo de `{{1}}` es un token ficticio
+> (`a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4`). Si cambia `WEB_ORIGIN`, hay que aprobar una `v2`.
 
 **Ventana Meta:** fuera de las 24 h del cliente — por eso es plantilla, no texto libre.
 
@@ -173,34 +170,8 @@ El PDF lleva el detalle de cada factura (número DTE, monto, abonado, saldo, ant
 
 ---
 
-### 4.4 `CONSOLIDADO` — Hoja de producción al cierre
-
-**Negocio:** Al cerrar la ventana (03:00 GT o cierre manual), Alex y Carla reciben el consolidado
-sin que Cristian tenga que reenviar el mensaje a mano. Destinatarios: `wa_produccion` y `wa_tienda`
-configurados en la conexión WABA (números internos, no clientes).
-
-**Cuerpo (BODY):**
-
-```
-Pedido consolidado para {{1}} (v{{2}}).
-```
-
-| Variable | Origen | Ejemplo |
-|----------|--------|---------|
-| `{{1}}` | Operación y entrega en una línea | `Jueves 21 de agosto · entrega Viernes 22 de agosto` |
-| `{{2}}` | Versión de la hoja (reapertura genera v2, v3…) | `1` |
-
-**Header (obligatorio):**
-
-| Componente | Valor |
-|------------|-------|
-| Tipo | DOCUMENT |
-| Contenido al enviar | PDF de hoja de producción (`hoja-{fecha_operacion}.pdf`) |
-
-**Idempotencia:** un envío por `(tipo=VentanaPedidoCerrada, destinatario_id=organizacion, fecha_operacion)`.
-Un recierre del mismo día no duplica el consolidado.
-
----
+> **Retirado (2026-11):** el consolidado por WhatsApp a producción y tienda (`mst_consolidado_v1`).
+> Alex y Carla leen la hoja en el panel; el cierre ya no envía nada.
 
 ## 5. Lo que NO es plantilla (pero hay que saberlo)
 
@@ -226,7 +197,7 @@ Si Meta devuelve `131047`, la ventana está cerrada: hay que usar plantilla, no 
 
 Ruta habitual: **Meta Business Suite → Configuración de WhatsApp → Plantillas de mensajes → Crear plantilla**.
 
-Para cada una de las cuatro:
+Para cada una de las tres:
 
 1. **Nombre** — usar los sugeridos (`mst_invitacion_v1`, etc.) o el que prefieran; luego mapear en el panel.
 2. **Categoría** — `UTILITY` (transaccional / operativo, no promocional).
@@ -249,7 +220,7 @@ POST /mensajeria/plantillas/sync
 # 3. Mapear cada propósito a la plantilla aprobada
 POST /mensajeria/plantillas/mapear
 { "proposito": "INVITACION", "plantillaId": "<uuid-de-bd>" }
-# Repetir para CONFIRMACION, ESTADO_CUENTA, CONSOLIDADO
+# Repetir para CONFIRMACION y ESTADO_CUENTA
 ```
 
 También se puede hacer desde `/conversaciones` si la UI de mapeo está expuesta allí.
@@ -271,7 +242,7 @@ y bloquea envíos de ese propósito hasta que se reactive o se mapee otra planti
 - [ ] Número de variables del BODY coincide con lo que envía el código
 - [ ] Preview en panel coincide con un envío de prueba real
 - [ ] `INVITACION`: botón abre el portal con token válido
-- [ ] `ESTADO_CUENTA` y `CONSOLIDADO`: PDF se adjunta y abre correctamente en el teléfono
+- [ ] `ESTADO_CUENTA`: PDF se adjunta y abre correctamente en el teléfono
 - [ ] Ninguna variable de prueba tiene saltos de línea ni espacios largos
 
 ### Por flujo de negocio
@@ -279,7 +250,6 @@ y bloquea envíos de ese propósito hasta que se reactive o se mapee otra planti
 - [ ] 18:00 GT: un solo `InvitacionDiaria` por cliente; segundo tick no duplica
 - [ ] Confirmar pedido desde portal o panel dispara `PedidoConfirmado` una sola vez
 - [ ] Recordatorio desde cartera encola `RecordatorioCobro` y adjunta PDF
-- [ ] Cierre de ventana envía consolidado a `wa_produccion` y `wa_tienda`
 - [ ] Reintento de outbox no duplica `wa_message_id`
 
 ### Pruebas automatizadas
@@ -299,7 +269,6 @@ bun test apps/api/src/modules/messaging/messaging.e2e.test.ts
 | Cambio de dominio (`WEB_ORIGIN`) | Actualizar env + **nueva versión** de `mst_invitacion_*` con URL de ejemplo del dominio nuevo |
 | Cliente no recibe invitación | Verificar `telefono_wa`, token de portal, plantilla APPROVED y fila en outbox |
 | Error `131047` en panel | Normal fuera de ventana: usar plantilla, no texto libre |
-| Consolidado no llega a Alex | Verificar `wa_produccion` / `wa_tienda` en conexión WABA y que exista hoja para esa `fecha_operacion` |
 
 **Versión de plantillas:** al cambiar el copy de forma incompatible (número de variables, tipo de header),
 crear `mst_{proposito}_v2`, aprobar en Meta, sincronizar y remapear. No editar una plantilla aprobada
@@ -337,11 +306,6 @@ Con los parámetros de prueba del seed:
 
 > [PDF adjunto]
 > Le compartimos su estado de cuenta: 3 facturas pendientes por Q 4,520.00.
-
-**Consolidado (interno)**
-
-> [PDF adjunto]
-> Pedido consolidado para Jueves 21 de agosto · entrega Viernes 22 de agosto (v1).
 
 ---
 

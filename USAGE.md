@@ -682,7 +682,7 @@ periodo elegido.
 
 #### WhatsApp — `/conversaciones`
 
-**Para qué sirve:** cola de **excepciones** de restaurantes. Cristian contesta lo que escribieron; invitaciones, confirmaciones, estados de cuenta y consolidados salen solos por outbox.
+**Para qué sirve:** cola de **excepciones** de restaurantes. Cristian contesta lo que escribieron; invitaciones, confirmaciones y estados de cuenta salen solos por outbox.
 
 **Lógica clave:**
 

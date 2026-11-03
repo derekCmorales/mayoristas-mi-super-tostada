@@ -25,16 +25,18 @@ export const PLANTILLA_PROPOSITOS = [
   "INVITACION",
   "CONFIRMACION",
   "ESTADO_CUENTA",
-  "CONSOLIDADO",
 ] as const;
 export type PlantillaProposito = (typeof PLANTILLA_PROPOSITOS)[number];
 
-/** Copy operacional de los cuatro avisos automáticos (sin nombres Meta). */
+/**
+ * Copy operacional de los avisos automáticos (sin nombres Meta).
+ * El consolidado por WhatsApp a producción y tienda se retiró (2026-11):
+ * Alex y Carla leen la hoja en el panel; el cierre solo materializa.
+ */
 export const PROPOSITO_ETIQUETA: Record<PlantillaProposito, string> = {
   INVITACION: "Aviso de invitación a pedir",
   CONFIRMACION: "Aviso de confirmación de pedido",
   ESTADO_CUENTA: "Aviso de estado de cuenta",
-  CONSOLIDADO: "Aviso de pedido consolidado",
 };
 
 export const pedidoNocheSchema = z.object({
@@ -199,28 +201,6 @@ export function paramsEstadoCuenta(input: {
   return [
     String(input.pendientes),
     formatearCentavos(input.saldoCentavos),
-  ];
-}
-
-/** Interno (planta): lleva las dos fechas, que no coinciden. */
-export function textoConsolidado(input: {
-  fechaOperacion: string;
-  fechaEntrega: string;
-  version: number;
-}): string {
-  const operacion = formatearFechaLarga(input.fechaOperacion);
-  const entrega = formatearFechaLarga(input.fechaEntrega);
-  return `Pedido consolidado de la operación del ${operacion} · entrega ${entrega} (v${input.version}).`;
-}
-
-export function paramsConsolidado(input: {
-  fechaOperacion: string;
-  fechaEntrega: string;
-  version: number;
-}): string[] {
-  return [
-    `${formatearFechaLarga(input.fechaOperacion)} · entrega ${formatearFechaLarga(input.fechaEntrega)}`,
-    String(input.version),
   ];
 }
 

@@ -152,18 +152,6 @@ export class CierreService {
               ),
             );
 
-    const [consolidado] = await this.db
-      .select({ id: outbox.id })
-      .from(outbox)
-      .where(
-        and(
-          eq(outbox.tipo, TIPO_EVENTO_VENTANA_CERRADA),
-          eq(outbox.destinatarioId, actor.organizacionId),
-          eq(outbox.fechaOperacion, fecha),
-        ),
-      )
-      .limit(1);
-
     return operacionResumenSchema.parse({
       fechaOperacion: fecha,
       fechaEntrega: cal.getFechaEntrega(fecha),
@@ -181,7 +169,8 @@ export class CierreService {
       previewCierre: {
         confirmados,
         borradores,
-        mensajesAEncolar: consolidado ? 0 : 1,
+        // El cierre ya no manda WhatsApp: la hoja se lee en el panel.
+        mensajesAEncolar: 0,
       },
       motivoReapertura,
     });
@@ -543,8 +532,8 @@ export class CierreService {
           return;
         }
         // Día cerrado con CONFIRMADO que llegaron después (ventana viva o
-        // seed). Se rematerializa vN+1 y se promocionan; no se reenvía el
-        // consolidado — el unique del outbox lo impediría igual.
+        // seed). Se rematerializa vN+1 y se promocionan; el unique del outbox
+        // no deja un segundo VentanaPedidoCerrada para el mismo día.
         absorbiendoTardios = true;
       }
 

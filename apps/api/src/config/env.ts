@@ -46,8 +46,31 @@ const envSchema = z
       (v) => (v === "" || v === undefined ? undefined : v),
       z.string().min(1).default("v21.0"),
     ),
+    /**
+     * Conexión WABA hecha fuera de este sistema (onboarding del tech provider).
+     * Al arrancar se importa cifrada a `conexion_waba`; ver `ConexionWabaService.importarDesdeEnv`.
+     */
+    META_WABA_ID: optionalText,
+    META_PHONE_NUMBER_ID: optionalText,
+    META_ACCESS_TOKEN: optionalText,
   })
   .superRefine((data, ctx) => {
+    const conexion = [
+      "META_WABA_ID",
+      "META_PHONE_NUMBER_ID",
+      "META_ACCESS_TOKEN",
+    ] as const;
+    if (conexion.some((k) => data[k])) {
+      for (const key of [...conexion, "META_APP_ID"] as const) {
+        if (!data[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${key} es obligatorio si se importa la conexión WABA desde el env`,
+            path: [key],
+          });
+        }
+      }
+    }
     if (data.NODE_ENV !== "production") return;
     const required = [
       "R2_ACCOUNT_ID",
@@ -77,6 +100,24 @@ export function metaSignupConfigured(env: Env): boolean {
 /** Hay app de Meta: el composition root elige Graph en vez del fake. */
 export function metaWhatsAppConfigured(env: Pick<Env, "META_APP_ID">): boolean {
   return Boolean(env.META_APP_ID);
+}
+
+export type ConexionWabaEnv = {
+  wabaId: string;
+  phoneNumberId: string;
+  accessToken: string;
+};
+
+/** La conexión WABA viene del env (tech provider) en vez de Embedded Signup. */
+export function conexionWabaDesdeEnv(env: Env): ConexionWabaEnv | null {
+  if (!env.META_WABA_ID || !env.META_PHONE_NUMBER_ID || !env.META_ACCESS_TOKEN) {
+    return null;
+  }
+  return {
+    wabaId: env.META_WABA_ID,
+    phoneNumberId: env.META_PHONE_NUMBER_ID,
+    accessToken: env.META_ACCESS_TOKEN,
+  };
 }
 
 export function r2Configured(env: Env): boolean {

@@ -210,7 +210,7 @@ function ConversacionesInner() {
       <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
         <PageToolbar
           className="shrink-0"
-          description="Conteste excepciones de restaurantes. Invitaciones, confirmaciones y consolidados salen solos."
+          description="Conteste excepciones de restaurantes. Invitaciones, confirmaciones y estados de cuenta salen solos."
           meta={
             modoDesarrollo ? (
               <Chip color="warning" size="sm" variant="soft">

@@ -408,7 +408,6 @@ const AVISO_CUANDO: Record<PlantillaProposito, string> = {
   INVITACION: "Al abrir la toma de pedidos",
   CONFIRMACION: "Al confirmar un pedido",
   ESTADO_CUENTA: "Al enviar el estado de cuenta",
-  CONSOLIDADO: "Al cerrar el día, a producción y tienda",
 };
 
 /**

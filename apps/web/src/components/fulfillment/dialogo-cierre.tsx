@@ -36,8 +36,8 @@ export function DialogoCierre({
             </Modal.Heading>
             <p className="text-sm leading-relaxed text-pretty text-tinta-500">
               {corrigiendo
-                ? "Sale la hoja corregida con los cambios resaltados. La que ya imprimieron queda vieja: hay que volver a imprimir o pasar el consolidado de cambios."
-                : "Se materializa la hoja de producción y se encola el consolidado. Después de esto, reabrir el día requiere motivo."}
+                ? "Sale la hoja corregida con los cambios resaltados. La que ya imprimieron queda vieja: hay que volver a imprimir o revisar los cambios en Producción."
+                : "Se materializa la hoja de producción y queda visible en Producción y Reparto. Después de esto, reabrir el día requiere motivo."}
             </p>
           </Modal.Header>
 
@@ -50,10 +50,6 @@ export function DialogoCierre({
               <Fila
                 etiqueta="Borradores que quedan fuera"
                 valor={preview?.borradores ?? 0}
-              />
-              <Fila
-                etiqueta="Mensajes a encolar"
-                valor={preview?.mensajesAEncolar ?? 0}
                 ultima
               />
             </dl>

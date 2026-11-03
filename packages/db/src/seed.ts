@@ -646,11 +646,6 @@ async function seedPlantillasFake(
       proposito: "ESTADO_CUENTA",
       body: "Le compartimos su estado de cuenta: {{1}} facturas pendientes por {{2}}.",
     },
-    {
-      name: "mst_consolidado_v1",
-      proposito: "CONSOLIDADO",
-      body: "Pedido consolidado para {{1}} (v{{2}}).",
-    },
   ] as const;
   for (const def of defs) {
     await db

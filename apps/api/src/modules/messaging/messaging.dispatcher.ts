@@ -3,8 +3,6 @@ import { and, eq } from "drizzle-orm";
 import {
   auditLog,
   cliente,
-  conexionWaba,
-  hojaProduccion,
   mensaje,
   pedido,
   pedidoItem,
@@ -15,10 +13,8 @@ import {
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
   TIPO_OUTBOX_RECORDATORIO,
   extraerCuerpoPlantilla,
-  hojaSnapshotSchema,
   instanteAIso,
   paramsConfirmacion,
-  paramsConsolidado,
   paramsEstadoCuenta,
   paramsInvitacion,
   renderCuerpoPlantilla,
@@ -26,8 +22,7 @@ import {
   type Clock,
   type PlantillaProposito,
 } from "@misupertostada/shared";
-import { renderEstadoCuentaPdf, renderHojaPdf } from "@misupertostada/pdf";
-import { loadEnv } from "../../config/env";
+import { renderEstadoCuentaPdf } from "@misupertostada/pdf";
 import { CLOCK, DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
 import type { OutboxDispatcher, OutboxRow } from "../shared/outbox.dispatcher";
@@ -74,7 +69,10 @@ export class MessagingDispatcher implements OutboxDispatcher {
     } else if (row.tipo === TIPO_OUTBOX_RECORDATORIO) {
       await this.recordatorio(row, clienteId);
     } else if (row.tipo === TIPO_EVENTO_VENTANA_CERRADA) {
-      await this.consolidado(row);
+      // Sin envío: producción y tienda leen la hoja en el panel. Se sigue
+      // aceptando el tipo para que el outbox lo dé por procesado y no quede
+      // PENDIENTE para siempre.
+      return;
     }
   }
 
@@ -116,7 +114,6 @@ export class MessagingDispatcher implements OutboxDispatcher {
     if (!cli?.telefonoWa || !cli.tokenPortalCifrado) return;
     const token = this.crypto.decrypt(cli.tokenPortalCifrado);
     if (!token) return;
-    const env = loadEnv();
     const cal = await this.calendar.load(cli.organizacionId);
     await this.enviarProposito({
       rowId: row.id,
@@ -125,7 +122,9 @@ export class MessagingDispatcher implements OutboxDispatcher {
       to: cli.telefonoWa,
       proposito: "INVITACION",
       params: paramsInvitacion(cal.getFechaEntrega(row.fechaOperacion)),
-      buttonParams: [`${env.WEB_ORIGIN}/p/${token}`],
+      // Meta exige dominio fijo en el botón: la plantilla aprobada lleva
+      // `{WEB_ORIGIN}/p/{{1}}` y aquí solo viaja el sufijo (el token).
+      buttonParams: [token],
     });
   }
 
@@ -158,66 +157,6 @@ export class MessagingDispatcher implements OutboxDispatcher {
       }),
       headerDocumentId: upload.mediaId,
     });
-  }
-
-  private async consolidado(row: OutboxRow): Promise<void> {
-    const orgId = row.destinatarioId;
-    const [conn] = await this.db
-      .select()
-      .from(conexionWaba)
-      .where(eq(conexionWaba.organizacionId, orgId))
-      .limit(1);
-    const destinos = [conn?.waProduccion, conn?.waTienda].filter(
-      (n): n is string => Boolean(n),
-    );
-    if (destinos.length === 0) {
-      await this.marcarDispatch(row.id, "CONSOLIDADO", null);
-      return;
-    }
-    const hojas = await this.db
-      .select()
-      .from(hojaProduccion)
-      .where(
-        and(
-          eq(hojaProduccion.organizacionId, orgId),
-          eq(hojaProduccion.fechaOperacion, row.fechaOperacion),
-        ),
-      );
-    const hoja = hojas.sort((a, b) => b.version - a.version)[0];
-    if (!hoja) {
-      await this.marcarDispatch(row.id, "CONSOLIDADO", null);
-      return;
-    }
-    const snapshot = hojaSnapshotSchema.parse(hoja.snapshot);
-    const pdf = await renderHojaPdf({
-      snapshot,
-      texto: hoja.texto,
-      version: hoja.version,
-      generadoAt: instanteAIso(hoja.generadoAt),
-    });
-    const upload = await this.wa.uploadDocument({
-      organizacionId: orgId,
-      bytes: pdf,
-      mime: "application/pdf",
-      filename: `hoja-${row.fechaOperacion}.pdf`,
-    });
-    const cal = await this.calendar.load(orgId);
-    const params = paramsConsolidado({
-      fechaOperacion: row.fechaOperacion,
-      fechaEntrega: cal.getFechaEntrega(row.fechaOperacion),
-      version: hoja.version,
-    });
-    for (const to of destinos) {
-      await this.enviarProposito({
-        rowId: row.id,
-        orgId,
-        clienteId: null,
-        to,
-        proposito: "CONSOLIDADO",
-        params,
-        headerDocumentId: upload.mediaId,
-      });
-    }
   }
 
   private async enviarProposito(input: {

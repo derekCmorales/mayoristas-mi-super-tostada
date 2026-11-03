@@ -83,12 +83,14 @@ export class MessagingModule implements OnModuleInit {
     private readonly plantillas: PlantillaService,
     private readonly invitaciones: InvitacionJob,
     private readonly boss: PgBossService,
+    private readonly conexion: ConexionWabaService,
   ) {
     this.registry.register(this.dispatcher);
   }
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
+    await this.conexion.importarDesdeEnv();
     if (!env.META_APP_ID) {
       const orgs = await this.db.select({ id: organizacion.id }).from(organizacion);
       for (const org of orgs) {
