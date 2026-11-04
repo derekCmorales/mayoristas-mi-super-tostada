@@ -634,17 +634,17 @@ async function seedPlantillasFake(
     {
       name: "mst_invitacion_v1",
       proposito: "INVITACION",
-      body: "Buenas noches. Ya está abierta la toma de pedidos para {{1}}. Puede responder aquí o abrir su portal.",
+      body: "Buenas noches. Ya está abierta la toma de pedidos para la entrega del {{1}}. Puede hacer su pedido desde su portal con el botón de abajo o responder a este mensaje.",
     },
     {
       name: "mst_confirmacion_v1",
       proposito: "CONFIRMACION",
-      body: "Recibimos su pedido {{1}} para el {{2}}. Total {{3}}.",
+      body: "Gracias por su pedido. Lo recibimos con el número {{1}} y lo entregaremos el {{2}}. El total es de {{3}}. Puede revisar el detalle completo con el botón de abajo y hacer cambios en su portal antes del cierre de la toma de pedidos.",
     },
     {
       name: "mst_estado_cuenta_v1",
       proposito: "ESTADO_CUENTA",
-      body: "Le compartimos su estado de cuenta: {{1}} facturas pendientes por {{2}}.",
+      body: "Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}. En el documento adjunto está el detalle de cada factura con su saldo. Si ya realizó el pago, puede responder a este mensaje para confirmarlo.",
     },
   ] as const;
   for (const def of defs) {

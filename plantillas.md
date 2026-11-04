@@ -85,7 +85,7 @@ Solo clientes activos con `telefono_wa` y token de portal válido.
 **Cuerpo (BODY):**
 
 ```
-Buenas noches. Ya está abierta la toma de pedidos para {{1}}. Puede responder aquí o abrir su portal.
+Buenas noches. Ya está abierta la toma de pedidos para la entrega del {{1}}. Puede hacer su pedido desde su portal con el botón de abajo o responder a este mensaje.
 ```
 
 | Variable | Origen | Ejemplo |
@@ -120,7 +120,7 @@ Se encola al pasar el pedido a `CONFIRMADO` (`PedidoConfirmado` en outbox).
 **Cuerpo (BODY):**
 
 ```
-Recibimos su pedido {{1}} para el {{2}}. Total {{3}}.
+Gracias por su pedido. Lo recibimos con el número {{1}} y lo entregaremos el {{2}}. El total es de {{3}}. Puede revisar el detalle completo con el botón de abajo y hacer cambios en su portal antes del cierre de la toma de pedidos.
 ```
 
 | Variable | Origen | Ejemplo |
@@ -155,7 +155,7 @@ Usa el **mismo propósito** que un envío manual de estado de cuenta desde conve
 **Cuerpo (BODY):**
 
 ```
-Le compartimos su estado de cuenta: {{1}} facturas pendientes por {{2}}.
+Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}. En el documento adjunto está el detalle de cada factura con su saldo. Si ya realizó el pago, puede responder a este mensaje para confirmarlo.
 ```
 
 | Variable | Origen | Ejemplo |
