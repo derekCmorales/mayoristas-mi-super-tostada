@@ -25,7 +25,7 @@
     "r2:cors": "bun scripts/r2-cors.ts",
     "assets:variants:regenerate": "bun apps/api/scripts/regenerate-variants.ts"
   },
-  "packageManager": "bun@1.3.13",
+  "packageManager": "bun@1.4.4",
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",

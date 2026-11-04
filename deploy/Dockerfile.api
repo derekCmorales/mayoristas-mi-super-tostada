@@ -10,7 +10,9 @@
 # Un solo stage de build: copiar fuente → instalar → compilar.
 # Openship inyecta NODE_ENV=production y bun run ejecuta scripts con bash
 # sin node_modules/.bin en PATH. Por eso: --production=false y bunx.
-FROM oven/bun:1.3-debian AS build
+# Versión exacta, no `1.x`: un tag flotante cambia el runtime sin commit.
+# 1.4.4 trae el arreglo de seguridad del decodificador Brotli (aviso de Openship).
+FROM oven/bun:1.4.4-debian AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api apps/api
@@ -19,7 +21,7 @@ COPY packages/shared packages/shared
 COPY packages/db packages/db
 COPY packages/pdf packages/pdf
 # Openship inyecta NODE_ENV=production; bun entonces omite devDeps (`nest`).
-# `--production` es flag booleano en Bun 1.3: no admite `=false`.
+# `--production` es flag booleano en Bun: no admite `=false`.
 RUN unset NODE_ENV && bun install --frozen-lockfile
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
