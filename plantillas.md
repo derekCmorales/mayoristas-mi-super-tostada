@@ -129,11 +129,20 @@ Recibimos su pedido {{1}} para el {{2}}. Total {{3}}.
 | `{{2}}` | Fecha de entrega + horario fijo si el cliente lo tiene | `Viernes 22 de agosto. Entrega a las 08:00` o solo `Viernes 22 de agosto` |
 | `{{3}}` | Total en quetzales (formateo de presentación) | `Q 1,240.50` |
 
-**Sin header ni botones.**
+**Botón (obligatorio):**
 
-**Nota:** el desglose línea por línea **no va aquí** — no cabe en variables de Meta.
-Si el cliente escribe después y abre ventana de 24 h, Cristian puede responder en prosa libre
-con el detalle completo desde `/conversaciones`.
+| Componente | Valor |
+|------------|-------|
+| Tipo | URL dinámica |
+| Texto del botón | `Ver pedido` |
+| URL en plantilla | `https://pedidos.misupertostada.com/p/{{1}}` |
+| Ejemplo | `https://pedidos.misupertostada.com/p/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4/pedidos/0f8c2a4e-1b3d-4e5f-8a9b-1c2d3e4f5a6b` |
+
+El sistema envía como sufijo `{token}/pedidos/{pedido.id}`: el botón abre el detalle del pedido
+en el portal, con el desglose completo. Un cliente sin token de portal no recibe confirmación.
+
+**Nota:** el desglose línea por línea **no va en el cuerpo** — no cabe en variables de Meta
+(sin saltos de línea). Por eso vive en el portal, detrás del botón.
 
 ---
 
@@ -301,6 +310,7 @@ Con los parámetros de prueba del seed:
 **Confirmación**
 
 > Recibimos su pedido 1847 para el Viernes 22 de agosto. Entrega a las 08:00. Total Q 1,240.50.
+> [Ver pedido]
 
 **Estado de cuenta**
 

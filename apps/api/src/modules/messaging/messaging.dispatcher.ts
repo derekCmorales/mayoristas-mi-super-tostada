@@ -79,6 +79,12 @@ export class MessagingDispatcher implements OutboxDispatcher {
   private async confirmacion(row: OutboxRow, clienteId: string): Promise<void> {
     const cli = await this.cliente(clienteId);
     if (!cli?.telefonoWa) return;
+    // El botón "Ver pedido" lleva el token: sin portal no hay a dónde mandarlo,
+    // y la plantilla aprobada no se puede enviar con el botón vacío.
+    const token = cli.tokenPortalCifrado
+      ? this.crypto.decrypt(cli.tokenPortalCifrado)
+      : null;
+    if (!token) return;
     const pedidoId = String((row.payload as { pedidoId?: string }).pedidoId ?? "");
     const [ped] = await this.db
       .select()
@@ -106,6 +112,9 @@ export class MessagingDispatcher implements OutboxDispatcher {
         totalCentavos: total,
         horarioEntregaFijo: cli.horarioEntregaFijo,
       }),
+      // El desglose no cabe en variables (sin saltos de línea): vive en el
+      // detalle del portal. La plantilla lleva `{WEB_ORIGIN}/p/{{1}}`.
+      buttonParams: [`${token}/pedidos/${ped.id}`],
     });
   }
 

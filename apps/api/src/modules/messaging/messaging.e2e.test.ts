@@ -443,6 +443,9 @@ describe.skipIf(!listo)("mensajería E7", () => {
       const wamids = f.fake.envios.map((e) => e.waMessageId);
       expect(new Set(wamids).size).toBe(wamids.length);
       expect(wamids.length).toBe(1);
+      expect(f.fake.envios[0]?.buttonParams).toEqual([
+        `${f.token}/pedidos/${prod!.id}`,
+      ]);
     } finally {
       await f.client.end({ timeout: 1 });
     }
