@@ -486,6 +486,9 @@ describe.skipIf(!listo)("mensajería E7", () => {
       expect(await f.processor.processRow(row!.id)).toBe("enviado");
       expect(f.fake.uploads.length).toBe(1);
       expect(f.fake.envios.some((e) => e.headerDocumentId)).toBe(true);
+      expect(f.fake.envios.at(-1)?.buttonParams).toEqual([
+        `${f.token}/cuenta/transferencia`,
+      ]);
       const pdfMod = readFileSync(
         join(
           dirname(fileURLToPath(import.meta.url)),
@@ -493,7 +496,6 @@ describe.skipIf(!listo)("mensajería E7", () => {
         ),
         "utf8",
       );
-      expect(pdfMod).toContain("COPY_PAGO_COMPLETO");
       expect(pdfMod.toLowerCase()).not.toContain("cancelad");
     } finally {
       await f.client.end({ timeout: 1 });

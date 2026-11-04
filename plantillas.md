@@ -155,7 +155,7 @@ Usa el **mismo propósito** que un envío manual de estado de cuenta desde conve
 **Cuerpo (BODY):**
 
 ```
-Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}. En el documento adjunto está el detalle de cada factura con su saldo. Si ya realizó el pago, puede responder a este mensaje para confirmarlo.
+Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}, con el detalle en el documento adjunto. Puede pagar en efectivo a nuestro repartidor en su próxima entrega, o por transferencia y reportarla con la foto del comprobante usando el botón de abajo.
 ```
 
 | Variable | Origen | Ejemplo |
@@ -170,7 +170,22 @@ Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes 
 | Tipo | DOCUMENT |
 | Contenido al enviar | PDF generado en servidor (`estado-cuenta.pdf`) |
 
-El PDF lleva el detalle de cada factura (número DTE, monto, abonado, saldo, antigüedad).
+**Botón (obligatorio):**
+
+| Componente | Valor |
+|------------|-------|
+| Tipo | URL dinámica |
+| Texto del botón | `Reportar transferencia` |
+| URL en plantilla | `https://pedidos.misupertostada.com/p/{{1}}` |
+| Ejemplo | `https://pedidos.misupertostada.com/p/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4/cuenta/transferencia` |
+
+El sistema envía como sufijo `{token}/cuenta/transferencia`. Un cliente sin token de portal no
+recibe el estado de cuenta.
+
+El PDF (`packages/pdf/src/estado-cuenta-pdf.tsx`) se arma al enviar, con las facturas que tienen
+saldo: número DTE, monto, abonado, saldo y antigüedad (resaltada desde 30 días), totales y las
+dos formas de pago (efectivo al repartidor, transferencia reportada en el portal). Nunca imprime
+el token del portal: el PDF se reenvía.
 **Una sola plantilla** sirve para 3 o 30 facturas porque el desglose va en el adjunto, no en variables.
 
 **Idempotencia:** un recordatorio por cliente por `fecha_operacion` (si ya se encoló hoy, el panel avisa).

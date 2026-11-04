@@ -47,7 +47,7 @@ export const PLANTILLAS_FAKE: Array<{
     proposito: "ESTADO_CUENTA",
     category: "UTILITY",
     language: "es",
-    body: "Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}. En el documento adjunto está el detalle de cada factura con su saldo. Si ya realizó el pago, puede responder a este mensaje para confirmarlo.",
+    body: "Le compartimos su estado de cuenta actualizado. Tiene {{1}} facturas pendientes por un total de {{2}}, con el detalle en el documento adjunto. Puede pagar en efectivo a nuestro repartidor en su próxima entrega, o por transferencia y reportarla con la foto del comprobante usando el botón de abajo.",
   },
 ];
 

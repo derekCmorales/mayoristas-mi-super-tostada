@@ -13,7 +13,9 @@ import {
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
   TIPO_OUTBOX_RECORDATORIO,
   extraerCuerpoPlantilla,
-  instanteAIso,
+  fechaDeInstante,
+  formatearFechaLarga,
+  horaEnZona,
   paramsConfirmacion,
   paramsEstadoCuenta,
   paramsInvitacion,
@@ -140,10 +142,18 @@ export class MessagingDispatcher implements OutboxDispatcher {
   private async recordatorio(row: OutboxRow, clienteId: string): Promise<void> {
     const cli = await this.cliente(clienteId);
     if (!cli?.telefonoWa) return;
+    // El botón "Reportar transferencia" lleva al portal: sin token no se puede
+    // llenar y Meta no acepta la plantilla con el botón vacío.
+    const token = cli.tokenPortalCifrado
+      ? this.crypto.decrypt(cli.tokenPortalCifrado)
+      : null;
+    if (!token) return;
     const cuenta = await this.cuentaPendiente(cli.id);
+    const now = this.clock.now();
     const pdf = await renderEstadoCuentaPdf({
       clienteNombre: cli.nombre,
-      generadoAt: instanteAIso(this.clock.now()),
+      // Lo lee el cliente: fecha y hora de Guatemala, no un ISO en UTC.
+      generadoAt: `${formatearFechaLarga(fechaDeInstante(now))} · ${horaEnZona(now)}`,
       facturasPendientes: cuenta.facturasPendientes,
       saldoCentavos: cuenta.saldoCentavos,
       facturas: cuenta.facturas,
@@ -165,6 +175,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
         saldoCentavos: cuenta.saldoCentavos,
       }),
       headerDocumentId: upload.mediaId,
+      buttonParams: [`${token}/cuenta/transferencia`],
     });
   }
 
