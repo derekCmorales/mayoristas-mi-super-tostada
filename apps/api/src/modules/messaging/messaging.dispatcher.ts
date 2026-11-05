@@ -19,9 +19,12 @@ import {
   paramsConfirmacion,
   paramsEstadoCuenta,
   paramsInvitacion,
+  PROPOSITOS_AUTOMATICOS,
   renderCuerpoPlantilla,
+  telefonoWaParaEnvio,
   validarParametrosPlantilla,
   type Clock,
+  type MotivoAvisoOmitido,
   type PlantillaProposito,
 } from "@misupertostada/shared";
 import { renderEstadoCuentaPdf } from "@misupertostada/pdf";
@@ -34,6 +37,7 @@ import { BusinessCalendarService } from "../shared/calendar.service";
 import { WHATSAPP_PORT, type WhatsAppPort } from "./whatsapp.port";
 import { PlantillaService } from "./plantilla.service";
 import { WebhookService } from "./webhook.service";
+import { EnvioAutomaticoService } from "./envio-automatico.service";
 import { facturasPendientesDeCliente } from "../receivables/factura-presentacion";
 
 const TIPOS = [
@@ -54,6 +58,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
     private readonly crypto: EncryptionService,
     private readonly audit: AuditWriter,
     private readonly calendar: BusinessCalendarService,
+    private readonly envioAutomatico: EnvioAutomaticoService,
   ) {}
 
   tipos(): readonly string[] {
@@ -106,7 +111,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       rowId: row.id,
       orgId: cli.organizacionId,
       clienteId: cli.id,
-      to: cli.telefonoWa,
+      telefonoWa: cli.telefonoWa,
       proposito: "CONFIRMACION",
       params: paramsConfirmacion({
         correlativo: ped.correlativo,
@@ -130,7 +135,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       rowId: row.id,
       orgId: cli.organizacionId,
       clienteId: cli.id,
-      to: cli.telefonoWa,
+      telefonoWa: cli.telefonoWa,
       proposito: "INVITACION",
       params: paramsInvitacion(cal.getFechaEntrega(row.fechaOperacion)),
       // Meta exige dominio fijo en el botón: la plantilla aprobada lleva
@@ -148,6 +153,10 @@ export class MessagingDispatcher implements OutboxDispatcher {
       ? this.crypto.decrypt(cli.tokenPortalCifrado)
       : null;
     if (!token) return;
+    if (!telefonoWaParaEnvio(cli.telefonoWa)) {
+      await this.marcarOmitido(row.id, cli.organizacionId, "ESTADO_CUENTA", "TELEFONO_INVALIDO");
+      return;
+    }
     const cuenta = await this.cuentaPendiente(cli.id);
     const now = this.clock.now();
     const pdf = await renderEstadoCuentaPdf({
@@ -168,7 +177,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
       rowId: row.id,
       orgId: cli.organizacionId,
       clienteId: cli.id,
-      to: cli.telefonoWa,
+      telefonoWa: cli.telefonoWa,
       proposito: "ESTADO_CUENTA",
       params: paramsEstadoCuenta({
         pendientes: cuenta.facturasPendientes,
@@ -183,12 +192,26 @@ export class MessagingDispatcher implements OutboxDispatcher {
     rowId: string;
     orgId: string;
     clienteId: string | null;
-    to: string;
+    telefonoWa: string;
     proposito: PlantillaProposito;
     params: string[];
     buttonParams?: string[];
     headerDocumentId?: string;
   }): Promise<void> {
+    // Se consulta al despachar, no al encolar: el interruptor manda en el
+    // instante en que el mensaje saldría.
+    if (
+      (PROPOSITOS_AUTOMATICOS as readonly string[]).includes(input.proposito) &&
+      !(await this.envioAutomatico.activo(input.orgId))
+    ) {
+      await this.marcarOmitido(input.rowId, input.orgId, input.proposito, "ENVIO_AUTOMATICO_APAGADO");
+      return;
+    }
+    const to = telefonoWaParaEnvio(input.telefonoWa);
+    if (!to) {
+      await this.marcarOmitido(input.rowId, input.orgId, input.proposito, "TELEFONO_INVALIDO");
+      return;
+    }
     const validacion = validarParametrosPlantilla([
       ...input.params,
       ...(input.buttonParams ?? []),
@@ -201,7 +224,7 @@ export class MessagingDispatcher implements OutboxDispatcher {
     );
     const sent = await this.wa.sendTemplate({
       organizacionId: input.orgId,
-      to: input.to,
+      to,
       name: tpl.name,
       language: tpl.language,
       bodyParams: input.params,
@@ -236,6 +259,26 @@ export class MessagingDispatcher implements OutboxDispatcher {
       entidad: "outbox",
       entidadId: outboxId,
       despues: { proposito, waMessageId },
+    });
+  }
+
+  /**
+   * El aviso no sale y la fila del outbox se da por atendida: si se reintentara,
+   * encender el interruptor días después mandaría confirmaciones viejas.
+   */
+  private async marcarOmitido(
+    outboxId: string,
+    organizacionId: string,
+    proposito: PlantillaProposito,
+    motivo: MotivoAvisoOmitido,
+  ): Promise<void> {
+    await this.audit.insert({
+      actorTipo: "sistema",
+      actorId: "outbox",
+      accion: "mensajeria.omitido",
+      entidad: "outbox",
+      entidadId: outboxId,
+      despues: { proposito, motivo, organizacionId },
     });
   }
 

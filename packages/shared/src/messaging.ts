@@ -51,6 +51,22 @@ export const TIPO_OUTBOX_PEDIDO_CONFIRMADO = "PedidoConfirmado";
 export const TIPO_OUTBOX_INVITACION = "InvitacionDiaria";
 export const TIPO_OUTBOX_RECORDATORIO = "RecordatorioCobro";
 
+/**
+ * Hora (America/Guatemala) en que sale la invitación diaria. La lee el job y
+ * el aviso de Configuración: un solo literal.
+ */
+export const HORA_INVITACION = "18:00";
+
+/** Avisos que manda el sistema solo; los apaga `organizacion.envio_automatico_activo`. */
+export const PROPOSITOS_AUTOMATICOS = ["INVITACION", "CONFIRMACION"] as const;
+
+/** Por qué un aviso del outbox se dio por atendido sin salir a WhatsApp. */
+export const MOTIVOS_AVISO_OMITIDO = [
+  "ENVIO_AUTOMATICO_APAGADO",
+  "TELEFONO_INVALIDO",
+] as const;
+export type MotivoAvisoOmitido = (typeof MOTIVOS_AVISO_OMITIDO)[number];
+
 export const MESSAGING_SSE_TIPOS = ["mensaje.nuevo", "mensaje.estado"] as const;
 export type MessagingSseTipo = (typeof MESSAGING_SSE_TIPOS)[number];
 
@@ -204,10 +220,6 @@ export function paramsEstadoCuenta(input: {
   ];
 }
 
-export function normalizarTelefonoWa(raw: string): string {
-  const digitos = raw.replace(/\D/g, "");
-  return digitos;
-}
 
 const uuid = z.string().uuid();
 
@@ -308,6 +320,32 @@ export const conexionWabaPublicaSchema = z.object({
   waTienda: z.string().nullable(),
 });
 export type ConexionWabaPublica = z.infer<typeof conexionWabaPublicaSchema>;
+
+const conteo = z.number().int().nonnegative();
+
+/** Configuración → Plantillas de Meta: el interruptor y a quién le llegaría. */
+export const envioAutomaticoEstadoSchema = z.object({
+  activo: z.boolean(),
+  horaInvitacion: z.string().regex(/^\d{2}:\d{2}$/),
+  clientes: z.object({
+    /** Activos: los únicos que reciben avisos. */
+    activos: conteo,
+    /** Con WhatsApp enviable y portal: reciben invitación y confirmación. */
+    listos: conteo,
+    sinWhatsapp: conteo,
+    whatsappInvalido: conteo,
+    /** Con WhatsApp válido pero sin enlace del portal: no reciben nada. */
+    sinPortal: conteo,
+  }),
+});
+export type EnvioAutomaticoEstado = z.infer<typeof envioAutomaticoEstadoSchema>;
+
+export const cambiarEnvioAutomaticoRequestSchema = z.object({
+  activo: z.boolean(),
+});
+export type CambiarEnvioAutomaticoRequest = z.infer<
+  typeof cambiarEnvioAutomaticoRequestSchema
+>;
 
 export const estadoCuentaPdfFacturaSchema = z.object({
   numeroDte: z.string().nullable(),

@@ -21,6 +21,7 @@ import { ConversacionService } from "./conversacion.service";
 import { ConversacionesController } from "./conversaciones.controller";
 import { MessagingDispatcher } from "./messaging.dispatcher";
 import { InvitacionJob } from "./invitacion.job";
+import { EnvioAutomaticoService } from "./envio-automatico.service";
 import { ConexionWabaService } from "./conexion.service";
 import { META_GESTION_PORT } from "./meta-gestion.port";
 import { FakeMetaGestionAdapter } from "./fake.meta-gestion";
@@ -71,6 +72,7 @@ export const COLA_INVITACION = "mensajeria.invitacion";
     MessagingDispatcher,
     InvitacionJob,
     ConexionWabaService,
+    EnvioAutomaticoService,
   ],
   exports: [FakeWhatsAppAdapter, MessagingDispatcher, PlantillaService],
 })

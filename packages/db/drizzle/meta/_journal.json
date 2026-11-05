@@ -134,6 +134,13 @@
       "when": 1787370000000,
       "tag": "0019_correccion_precios",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787380000000,
+      "tag": "0020_envio_automatico",
+      "breakpoints": true
     }
   ]
 }

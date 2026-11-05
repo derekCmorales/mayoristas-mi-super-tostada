@@ -390,6 +390,17 @@ Ventana ABIERTA → composer libre, con countdown visible
 - El registro de plantillas se **sincroniza** desde el Graph API. No hardcodees nombres: Meta
   puede pausar una plantilla por baja calidad.
 
+### Interruptor de envío automático
+
+- `organizacion.envio_automatico_activo` **nace apagado**. Conectar Meta y aprobar plantillas no
+  basta para escribirle a los restaurantes: alguien lo enciende en Configuración → Plantillas de Meta.
+- Apaga la invitación diaria (`HORA_INVITACION`) y la confirmación de pedido. El estado de cuenta
+  es manual y no depende de él.
+- Apagado, la invitación ni se encola y la confirmación se da por atendida con
+  `mensajeria.omitido` en `audit_log`: encenderlo nunca dispara avisos viejos.
+- El teléfono se guarda canónico (`+50255551234`, `revisarTelefonoWa` en `packages/shared`) y se
+  envía sin `+`. Un número inválido no sale: queda `mensajeria.omitido` con `TELEFONO_INVALIDO`.
+
 ### Durante el desarrollo
 
 Existe `FakeWhatsAppAdapter` detrás de `WhatsAppPort`. Simula envíos, webhooks entrantes y la

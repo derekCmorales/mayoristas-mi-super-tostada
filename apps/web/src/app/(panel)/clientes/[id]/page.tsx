@@ -6,6 +6,7 @@ import {
   Card,
   Chip,
   Description,
+  FieldError,
   Input,
   Label,
   Modal,
@@ -22,6 +23,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   crearClienteRequestSchema,
+  formatearTelefonoWa,
   PAGO_METODO_ETIQUETA,
   tienePermiso,
   type ActorPublico,
@@ -38,6 +40,7 @@ import { enlacePortal } from "@/lib/portal-vista";
 import { toastFromError, toastSuccess } from "@/lib/toast";
 import { subirFotoCliente } from "@/lib/upload-asset";
 import { PanelShell } from "@/components/layout/panel-shell";
+import { WhatsappChip, ayudaTelefonoWa } from "@/components/catalog/telefono-wa";
 import { Money } from "@/components/domain/money";
 import { EstadoBadge } from "@/components/domain/estado-badge";
 import { Skeleton, RowSkeleton } from "@/components/ui/skeleton";
@@ -243,13 +246,14 @@ export default function ClienteFichaPage() {
                     Límite excedido
                   </Chip>
                 )}
+                {c.activo && <WhatsappChip cliente={c} />}
               </div>
               <p className="mst-label mt-1 text-pretty">
                 {c.horarioEntregaFijo
                   ? `Entrega ${c.horarioEntregaFijo}`
                   : "Sin horario fijo"}
                 {c.contacto ? ` · ${c.contacto}` : ""}
-                {c.telefonoWa ? ` · ${c.telefonoWa}` : ""}
+                {c.telefonoWa ? ` · ${formatearTelefonoWa(c.telefonoWa)}` : ""}
               </p>
             </div>
             {canWrite && (
@@ -766,6 +770,7 @@ function FichaForm({
   const [nombre, setNombre] = useState(cliente.nombre);
   const [contacto, setContacto] = useState(cliente.contacto ?? "");
   const [telefonoWa, setTelefonoWa] = useState(cliente.telefonoWa ?? "");
+  const ayudaTel = ayudaTelefonoWa(telefonoWa);
   const [horario, setHorario] = useState(cliente.horarioEntregaFijo ?? "");
   const [notas, setNotas] = useState(cliente.notasPermanentes ?? "");
   const [limite, setLimite] = useState(
@@ -784,7 +789,10 @@ function FichaForm({
         notasPermanentes: notas.trim() || null,
         limiteFacturasPendientes: limite.trim() ? Number(limite) : null,
       });
-      if (!parsed.success) throw new Error("Revise los datos del cliente");
+      if (!parsed.success) {
+        const tel = parsed.error.issues.find((i) => i.path[0] === "telefonoWa");
+        throw new Error(tel ? `Teléfono WhatsApp: ${tel.message}` : "Revise los datos del cliente");
+      }
       await api(`/clientes/${cliente.id}`, {
         method: "PATCH",
         body: JSON.stringify(parsed.data),
@@ -828,9 +836,15 @@ function FichaForm({
         type="tel"
         value={telefonoWa}
         onChange={setTelefonoWa}
+        isInvalid={ayudaTel.invalido}
       >
         <Label>Teléfono WhatsApp</Label>
-        <Input />
+        <Input inputMode="tel" placeholder="5555 1234" />
+        {ayudaTel.invalido ? (
+          <FieldError>{ayudaTel.texto}</FieldError>
+        ) : (
+          <Description>{ayudaTel.texto}</Description>
+        )}
       </TextField>
       <TextField isDisabled={!canWrite} value={horario} onChange={setHorario}>
         <Label>Horario de entrega fijo</Label>

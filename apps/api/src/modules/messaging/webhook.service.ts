@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { cliente, conversacion, mensaje } from "@misupertostada/db";
 import {
   normalizarTelefonoWa,
+  telefonoWaParaEnvio,
   ventanaExpiraAtDesdeWebhook,
 } from "@misupertostada/shared";
 import { loadEnv } from "../../config/env";
@@ -118,7 +119,12 @@ export class WebhookService {
     const digitos = normalizarTelefonoWa(input.from);
     const clientes = await this.db.select().from(cliente);
     const cli = clientes.find(
-      (c) => c.telefonoWa && normalizarTelefonoWa(c.telefonoWa) === digitos,
+      // Lo guardado puede ser local (`5555 1234`) o canónico (`+50255551234`);
+      // Meta siempre manda el internacional sin `+`.
+      (c) =>
+        c.telefonoWa &&
+        (telefonoWaParaEnvio(c.telefonoWa) ?? normalizarTelefonoWa(c.telefonoWa)) ===
+          digitos,
     );
     if (!cli) {
       await this.audit.insert({

@@ -23,6 +23,7 @@ import {
   mensajePublicoSchema,
   renderCuerpoPlantilla,
   simularInboundRequestSchema,
+  telefonoWaParaEnvio,
   tienePermiso,
   validarParametrosPlantilla,
   ventanaWaAbierta,
@@ -177,11 +178,13 @@ export class ConversacionService {
     }
     const input = parseBody(enviarMensajeRequestSchema, body);
     const conv = await this.owned(id, actor.organizacionId);
-    const to = conv.cliente.telefonoWa;
+    const to = telefonoWaParaEnvio(conv.cliente.telefonoWa);
     if (!to) {
       throw new DomainException(
         "VALIDACION",
-        "El cliente no tiene teléfono de WhatsApp",
+        conv.cliente.telefonoWa
+          ? "El teléfono de WhatsApp del cliente no es válido; corríjalo en su ficha"
+          : "El cliente no tiene teléfono de WhatsApp",
         400,
       );
     }
