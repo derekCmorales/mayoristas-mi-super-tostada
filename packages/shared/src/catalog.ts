@@ -109,6 +109,28 @@ export const clientePublicoSchema = z.object({
 
 export type ClientePublico = z.infer<typeof clientePublicoSchema>;
 
+/**
+ * Palabra que el jefe debe escribir, tal cual, para borrar un cliente de forma permanente.
+ * Es una segunda llave a propósito: desactivar es un clic, borrar no se deshace.
+ */
+export const CONFIRMACION_ELIMINAR_CLIENTE = "ELIMINAR";
+
+export const eliminarClienteRequestSchema = z.object({
+  confirmacion: z.literal(CONFIRMACION_ELIMINAR_CLIENTE, {
+    message: `Escriba ${CONFIRMACION_ELIMINAR_CLIENTE} para confirmar`,
+  }),
+  motivo: z.string().trim().max(500).nullable().optional(),
+});
+
+export type EliminarClienteRequest = z.infer<typeof eliminarClienteRequestSchema>;
+
+export const eliminarClienteResponseSchema = z.object({
+  id: z.string().uuid(),
+  eliminado: z.literal(true),
+});
+
+export type EliminarClienteResponse = z.infer<typeof eliminarClienteResponseSchema>;
+
 export const tokenPortalResponseSchema = z.object({
   token: z.string().min(20),
 });

@@ -37,24 +37,54 @@ describe("permisos efectivos", () => {
     ).toBe(true);
   });
 
-  test("plantilla de producción: ve el núcleo, sin acciones de escritura", () => {
+  test("plantilla de producción: solo la hoja, sin acciones de escritura", () => {
     const base = permisosPlantilla("PRODUCCION");
-    for (const id of ["hoy", "tablero", "pedidos", "produccion", "reparto", "cartera"] as const) {
-      expect(tieneModulo(base, id)).toBe(true);
+    expect(base).toEqual(["panel.produccion"]);
+    for (const id of ["hoy", "tablero", "pedidos", "reparto", "cartera", "catalogo", "conversaciones"] as const) {
+      expect(tieneModulo(base, id)).toBe(false);
     }
-    expect(tieneModulo(base, "catalogo")).toBe(false);
-    expect(tienePermiso(base, "pedidos.entregar")).toBe(false);
   });
 
-  test("plantillas de tienda y reparto", () => {
+  test("plantilla de tienda: pedidos de mostrador, hoja, DTE y cobro en tienda", () => {
     const tienda = permisosPlantilla("TIENDA");
-    expect(tienePermiso(tienda, "pedidos.capturar_manual")).toBe(true);
     expect(tienePermiso(tienda, "cobranza.capturar_dte")).toBe(true);
+    expect(tieneModulo(tienda, "pedidos")).toBe(true);
+    expect(tieneModulo(tienda, "produccion")).toBe(true);
+    expect(tieneModulo(tienda, "cartera")).toBe(true);
+    expect(tienePermiso(tienda, "pedidos.capturar_manual")).toBe(true);
+    expect(tienePermiso(tienda, "cobranza.registrar_pago")).toBe(true);
+    expect(tienePermiso(tienda, "cobranza.confirmar_transferencia")).toBe(false);
+    expect(tienePermiso(tienda, "pedidos.entregar")).toBe(false);
+    expect(tieneModulo(tienda, "hoy")).toBe(false);
+    expect(tieneModulo(tienda, "reparto")).toBe(false);
+    expect(tienePermiso(tienda, "precios.cambiar")).toBe(false);
+  });
 
+  test("plantilla de reparto: solo ruta, entrega y cobro en puerta", () => {
     const reparto = permisosPlantilla("REPARTO");
-    expect(tienePermiso(reparto, "pedidos.entregar")).toBe(true);
-    expect(tienePermiso(reparto, "cobranza.registrar_pago")).toBe(true);
+    expect(reparto).toEqual([
+      "panel.reparto",
+      "pedidos.entregar",
+      "cobranza.registrar_pago",
+    ]);
+    expect(tieneModulo(reparto, "cartera")).toBe(false);
     expect(tienePermiso(reparto, "cobranza.capturar_dte")).toBe(false);
+  });
+
+  test("ningún puesto operativo recibe permisos de administración", () => {
+    const reservados = [
+      ...PERMISOS_NO_DELEGABLES,
+      "precios.cambiar",
+      "catalogo.escribir",
+      "mensajeria.enviar",
+      "ventana.cerrar",
+    ] as const;
+    for (const rol of ["PRODUCCION", "TIENDA", "REPARTO"] as const) {
+      const base = permisosPlantilla(rol);
+      for (const codigo of reservados) {
+        expect(tienePermiso(base, codigo)).toBe(false);
+      }
+    }
   });
 });
 

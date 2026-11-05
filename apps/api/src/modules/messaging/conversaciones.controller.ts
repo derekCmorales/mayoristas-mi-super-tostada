@@ -36,6 +36,28 @@ export class ConversacionesController {
     return envelopeOk(await this.conversaciones.obtener(id, actor));
   }
 
+  /** Chat de WhatsApp visto desde la ficha del cliente; `null` si nunca hubo mensajes. */
+  @Get("clientes/:clienteId/conversacion")
+  async porCliente(
+    @Param("clienteId", ParseUUIDPipe) clienteId: string,
+    @CurrentActor() actor: Actor,
+  ) {
+    return envelopeOk(
+      await this.conversaciones.obtenerPorCliente(clienteId, actor),
+    );
+  }
+
+  @Post("clientes/:clienteId/conversacion")
+  @RequierePermiso("mensajeria.enviar")
+  async abrirPorCliente(
+    @Param("clienteId", ParseUUIDPipe) clienteId: string,
+    @CurrentActor() actor: Actor,
+  ) {
+    return envelopeOk(
+      await this.conversaciones.abrirPorCliente(clienteId, actor),
+    );
+  }
+
   @Post("conversaciones/:id/enviar")
   @RequierePermiso("mensajeria.enviar")
   async enviar(

@@ -4,7 +4,10 @@ import {
   auditLog,
   cliente,
   clienteProducto,
+  conversacion,
+  mensaje,
   organizacion,
+  pedido,
   producto,
   usuario,
 } from "@misupertostada/db";
@@ -399,6 +402,112 @@ describe.skipIf(!listo)("catálogo E1", () => {
           f.actor,
         ),
       ).rejects.toMatchObject({ code: "PRODUCTO_INACTIVO" });
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("eliminar cliente: solo ADMIN_JEFE, exige ELIMINAR, arrastra chat y precios, deja audit", async () => {
+    const f = await fixture();
+    try {
+      const prod = await f.productos.crear(
+        {
+          sku: `DEL-${crypto.randomUUID().slice(0, 6)}`,
+          nombreCanonico: "Tortilla a borrar",
+          familia: "TORTILLA",
+          unidadMedida: "LIBRA",
+          puntoCarga: "PLANTA",
+        },
+        f.actor,
+      );
+      const cli = await f.clientes.crear(
+        { nombre: `Borrar ${crypto.randomUUID().slice(0, 8)}` },
+        f.actor,
+      );
+      await f.clienteProductoSvc.upsert(
+        cli.id,
+        prod.id,
+        { alias: "la grande", precioCentavos: 1250 },
+        f.actor,
+      );
+      const [conv] = await f.db
+        .insert(conversacion)
+        .values({ clienteId: cli.id, noLeidos: 1 })
+        .returning();
+      await f.db.insert(mensaje).values({
+        conversacionId: conv!.id,
+        waMessageId: `wamid.${crypto.randomUUID()}`,
+        direction: "INBOUND",
+        tipo: "TEXTO",
+        bodyRenderizado: "hola",
+        status: "RECIBIDO",
+      });
+
+      // Un ADMIN con catalogo.escribir no basta: es una llave del jefe.
+      await expect(
+        f.clientes.eliminar(cli.id, { confirmacion: "ELIMINAR" }, f.actorSinPrecio),
+      ).rejects.toMatchObject({ code: "PERMISO_DENEGADO" });
+      // Sin la palabra exacta no procede.
+      await expect(
+        f.clientes.eliminar(cli.id, { confirmacion: "eliminar" }, f.actor),
+      ).rejects.toBeInstanceOf(DomainException);
+
+      const res = await f.clientes.eliminar(
+        cli.id,
+        { confirmacion: "ELIMINAR", motivo: "duplicado" },
+        f.actor,
+      );
+      expect(res).toEqual({ id: cli.id, eliminado: true });
+
+      expect(
+        await f.db.select().from(cliente).where(eq(cliente.id, cli.id)),
+      ).toHaveLength(0);
+      expect(
+        await f.db
+          .select()
+          .from(clienteProducto)
+          .where(eq(clienteProducto.clienteId, cli.id)),
+      ).toHaveLength(0);
+      expect(
+        await f.db.select().from(mensaje).where(eq(mensaje.conversacionId, conv!.id)),
+      ).toHaveLength(0);
+
+      const [audit] = await f.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(eq(auditLog.entidadId, cli.id), eq(auditLog.accion, "clientes.eliminar")),
+        );
+      expect(audit?.actorId).toBe(f.actor.usuarioId);
+      expect((audit?.antes as { nombre: string }).nombre).toBe(cli.nombre);
+      expect((audit?.despues as { motivo: string }).motivo).toBe("duplicado");
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("eliminar cliente con pedidos se rechaza: el historial de dinero no se toca", async () => {
+    const f = await fixture();
+    try {
+      const cli = await f.clientes.crear(
+        { nombre: `Historial ${crypto.randomUUID().slice(0, 8)}` },
+        f.actor,
+      );
+      await f.db.insert(pedido).values({
+        organizacionId: f.orgId,
+        correlativo: 1,
+        fechaOperacion: "2026-11-02",
+        fechaEntrega: "2026-11-03",
+        clienteId: cli.id,
+        estado: "CONFIRMADO",
+        origen: "MANUAL",
+      });
+      await expect(
+        f.clientes.eliminar(cli.id, { confirmacion: "ELIMINAR" }, f.actor),
+      ).rejects.toMatchObject({ code: "CLIENTE_CON_HISTORIAL" });
+      expect(
+        await f.db.select().from(cliente).where(eq(cliente.id, cli.id)),
+      ).toHaveLength(1);
     } finally {
       await f.client.end({ timeout: 1 });
     }

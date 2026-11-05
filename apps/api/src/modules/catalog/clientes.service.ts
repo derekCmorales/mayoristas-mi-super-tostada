@@ -1,12 +1,22 @@
 import { randomBytes } from "node:crypto";
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { and, asc, eq } from "drizzle-orm";
-import { cliente } from "@misupertostada/db";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import {
+  abono,
+  cliente,
+  clienteBono,
+  clienteProducto,
+  conversacion,
+  mensaje,
+  pedido,
+} from "@misupertostada/db";
 import {
   clientePublicoSchema,
   crearClienteRequestSchema,
   editarClienteRequestSchema,
+  eliminarClienteRequestSchema,
   type ClientePublico,
+  type EliminarClienteResponse,
 } from "@misupertostada/shared";
 import { DRIZZLE } from "../shared/tokens";
 import type { AppDatabase } from "../shared/database.module";
@@ -135,6 +145,116 @@ export class ClientesService implements ClientePropietario, ClienteCreador {
 
   async activar(id: string, actor: Actor): Promise<ClientePublico> {
     return this.setActivo(id, true, actor, "clientes.activar");
+  }
+
+  /**
+   * Borrado permanente de un cliente. Es la única excepción a «nada se borra» (§2.4) y está
+   * acotada a propósito:
+   *
+   * - Solo `ADMIN_JEFE`, por rol y no por permiso delegable: no se puede regalar esta llave.
+   * - Exige escribir `ELIMINAR` (`eliminarClienteRequestSchema`); desactivar sigue siendo el
+   *   camino normal y reversible.
+   * - Solo procede si el cliente **no tiene historial de dinero**: ningún pedido (y por lo tanto
+   *   ninguna factura ni pago) y ningún abono. Si lo tiene, borrar descuadraría cierres y cartera,
+   *   así que se rechaza con `CLIENTE_CON_HISTORIAL` y se sugiere desactivar. Sirve para clientes
+   *   creados por error, duplicados o de prueba.
+   * - Arrastra lo que cuelga solo de él: precios y alias (`cliente_producto`), bonos sin usar y
+   *   su conversación de WhatsApp con sus mensajes.
+   * - `audit_log` guarda la ficha completa en `antes`: el cliente desaparece del panel, pero queda
+   *   evidencia de quién lo borró, cuándo, por qué y cómo era.
+   */
+  async eliminar(
+    id: string,
+    body: unknown,
+    actor: Actor,
+  ): Promise<EliminarClienteResponse> {
+    if (actor.rol !== "ADMIN_JEFE") {
+      throw new DomainException(
+        "PERMISO_DENEGADO",
+        "Solo el administrador jefe puede eliminar clientes",
+        403,
+      );
+    }
+    const input = parseBody(eliminarClienteRequestSchema, body);
+
+    return this.db.transaction(async (tx) => {
+      // Bloquea la fila: un pedido capturado en paralelo no puede quedar huérfano.
+      const [actual] = await tx
+        .select()
+        .from(cliente)
+        .where(
+          and(eq(cliente.id, id), eq(cliente.organizacionId, actor.organizacionId)),
+        )
+        .for("update")
+        .limit(1);
+      if (!actual) {
+        throw new DomainException("NO_ENCONTRADO", "Cliente no encontrado", 404);
+      }
+
+      const [conPedido] = await tx
+        .select({ id: pedido.id })
+        .from(pedido)
+        .where(eq(pedido.clienteId, id))
+        .limit(1);
+      const [conAbono] = await tx
+        .select({ id: abono.id })
+        .from(abono)
+        .where(eq(abono.clienteId, id))
+        .limit(1);
+      if (conPedido || conAbono) {
+        throw new DomainException(
+          "CLIENTE_CON_HISTORIAL",
+          "Este cliente tiene pedidos o pagos registrados. Para no descuadrar cierres ni cartera no se puede eliminar; desactívelo.",
+          409,
+        );
+      }
+
+      const convs = await tx
+        .select({ id: conversacion.id })
+        .from(conversacion)
+        .where(eq(conversacion.clienteId, id));
+      const convIds = convs.map((c) => c.id);
+      let mensajesBorrados = 0;
+      if (convIds.length > 0) {
+        const borrados = await tx
+          .delete(mensaje)
+          .where(inArray(mensaje.conversacionId, convIds))
+          .returning({ id: mensaje.id });
+        mensajesBorrados = borrados.length;
+        await tx.delete(conversacion).where(inArray(conversacion.id, convIds));
+      }
+      const productos = await tx
+        .delete(clienteProducto)
+        .where(eq(clienteProducto.clienteId, id))
+        .returning({ id: clienteProducto.productoId });
+      const bonos = await tx
+        .delete(clienteBono)
+        .where(eq(clienteBono.clienteId, id))
+        .returning({ id: clienteBono.id });
+      await tx.delete(cliente).where(eq(cliente.id, id));
+
+      await this.audit.insert(
+        {
+          actorTipo: "usuario",
+          actorId: actor.usuarioId,
+          accion: "clientes.eliminar",
+          entidad: "cliente",
+          entidadId: id,
+          antes: presentarCliente(actual),
+          despues: {
+            eliminado: true,
+            motivo: input.motivo ?? null,
+            productosBorrados: productos.length,
+            bonosBorrados: bonos.length,
+            mensajesBorrados,
+          },
+          ip: actor.ip,
+          userAgent: actor.userAgent,
+        },
+        tx,
+      );
+      return { id, eliminado: true as const };
+    });
   }
 
   async rotarTokenPortal(

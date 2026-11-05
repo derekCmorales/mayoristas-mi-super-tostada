@@ -58,6 +58,19 @@ const NUCLEO_PANEL: readonly PermisoCodigo[] = [
 /**
  * Plantillas de puesto: solo siembran grants al crear (o migrar) una cuenta.
  * El acceso efectivo ya no se deriva del rol — vive en `usuario_permiso`.
+ *
+ * **Mínimo privilegio.** Cada puesto operativo recibe solo lo que su oficio usa cada día
+ * (ver AGENTS.md §1). Lo demás lo delega ADMIN_JEFE caso por caso desde Usuarios:
+ *
+ * - PRODUCCION (planta): solo la hoja de producción. Arranca de madrugada y solo le
+ *   interesan las tortillas; no ve cartera, precios ni conversaciones.
+ * - TIENDA (mostrador y facturación): emite el DTE en el sistema externo y prepara los pedidos.
+ *   Lee pedidos y la hoja, captura pedidos de mostrador o llamada, captura el número de DTE y
+ *   registra lo que se cobra en tienda (efectivo o transferencia con comprobante). No marca
+ *   entregas (eso es de ruta), no confirma transferencias reportadas por el portal ni ve Hoy,
+ *   Tablero o Reparto.
+ * - REPARTO (ruta): marca entregas y cobra en puerta (con comprobante). Nada más: ni cartera
+ *   completa, ni tablero, ni pedidos de otros días.
  */
 export const ROL_PERMISOS: Record<Rol, readonly PermisoCodigo[]> = {
   ADMIN_JEFE: PERMISOS,
@@ -74,19 +87,16 @@ export const ROL_PERMISOS: Record<Rol, readonly PermisoCodigo[]> = {
     "ventana.cerrar",
     "mensajeria.enviar",
   ],
-  PRODUCCION: [...NUCLEO_PANEL],
+  PRODUCCION: ["panel.produccion"],
   TIENDA: [
-    ...NUCLEO_PANEL,
+    "panel.pedidos",
+    "panel.produccion",
+    "panel.cartera",
     "pedidos.capturar_manual",
-    "pedidos.entregar",
     "cobranza.capturar_dte",
     "cobranza.registrar_pago",
   ],
-  REPARTO: [
-    ...NUCLEO_PANEL,
-    "pedidos.entregar",
-    "cobranza.registrar_pago",
-  ],
+  REPARTO: ["panel.reparto", "pedidos.entregar", "cobranza.registrar_pago"],
 };
 
 export function esPermisoCodigo(value: string): value is PermisoCodigo {

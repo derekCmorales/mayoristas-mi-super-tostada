@@ -16,6 +16,9 @@ export {
   crearProductoRequestSchema,
   editarClienteRequestSchema,
   editarProductoRequestSchema,
+  CONFIRMACION_ELIMINAR_CLIENTE,
+  eliminarClienteRequestSchema,
+  eliminarClienteResponseSchema,
   horarioEntregaSchema,
   importFilaResultadoSchema,
   importReporteSchema,
@@ -38,6 +41,8 @@ export {
   type CrearProductoRequest,
   type EditarClienteRequest,
   type EditarProductoRequest,
+  type EliminarClienteRequest,
+  type EliminarClienteResponse,
   type ImportReporte,
   type ImportTipo,
   type ImportarCsvRequest,
@@ -250,6 +255,13 @@ export {
   type PermisoCodigo,
   type PermisoNoDelegable,
 } from "./permisos";
+export {
+  PERFILES_CUENTA,
+  resumenPlantilla,
+  sugerirUsername,
+  type PerfilCuenta,
+  type PerfilCuentaId,
+} from "./perfiles-cuenta";
 export {
   MODULOS_ACCESO,
   MODULO_IDS,

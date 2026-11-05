@@ -20,6 +20,7 @@ import { Plus, UserCog } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   MODULOS_ACCESO,
+  PERFILES_CUENTA,
   ROL_ETIQUETA,
   ROLES,
   modulosDePermisos,
@@ -27,12 +28,14 @@ import {
   tieneModulo,
   type ActorPublico,
   type ModuloAccesoId,
+  type PerfilCuenta,
   type Rol,
 } from "@misupertostada/shared";
 import { api } from "@/lib/api";
 import { toastFromError, toastSuccess } from "@/lib/toast";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RowSkeleton } from "@/components/ui/skeleton";
+import { AtajoCuentaModal } from "./atajo-cuenta-modal";
 
 const ROL_CONSECUENCIA: Record<Rol, string> = {
   ADMIN_JEFE: "Ve todos los módulos y es el único que administra cuentas.",
@@ -51,6 +54,7 @@ export function UsuariosCard() {
   const [crear, setCrear] = useState(false);
   const [detalle, setDetalle] = useState<ActorPublico | null>(null);
   const [clave, setClave] = useState<ActorPublico | null>(null);
+  const [atajo, setAtajo] = useState<PerfilCuenta | null>(null);
 
   const lista = useQuery({
     queryKey: ["usuarios"],
@@ -80,6 +84,27 @@ export function UsuariosCard() {
           Nuevo usuario
         </Button>
       </Card.Header>
+
+      {/* Atajos por puesto: cuenta lista en un paso con la plantilla de mínimo privilegio. */}
+      <div className="grid gap-2 border-t border-[var(--border-subtle)] px-4 py-3 sm:px-5">
+        <p className="mst-label">Crear rápido por puesto</p>
+        <div className="flex flex-wrap gap-2">
+          {PERFILES_CUENTA.map((p) => (
+            <Button
+              key={p.id}
+              size="sm"
+              variant="secondary"
+              onPress={() => setAtajo(p)}
+            >
+              {p.etiqueta}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-tinta-500">
+          Usuario sugerido, contraseña generada y solo los módulos que el
+          puesto usa. Para algo a la medida, use «Nuevo usuario».
+        </p>
+      </div>
 
       <Card.Content className="p-0">
         {lista.isLoading ? (
@@ -188,6 +213,14 @@ export function UsuariosCard() {
             qc.invalidateQueries({ queryKey: ["usuarios"] });
             setDetalle(next);
           }}
+        />
+      ) : null}
+      {atajo ? (
+        <AtajoCuentaModal
+          perfil={atajo}
+          existentes={usuarios.map((u) => u.username)}
+          onClose={() => setAtajo(null)}
+          onCreated={() => qc.invalidateQueries({ queryKey: ["usuarios"] })}
         />
       ) : null}
       {clave ? (

@@ -103,6 +103,19 @@ export const PRIORIDAD_MOVIL_POR_ROL: Record<Rol, readonly SeccionPanel[]> = {
   ADMIN_JEFE: ["hoy", "pedidos", "produccion", "reparto", "cartera", "tablero"],
 };
 
+/**
+ * Sección a la que entra la cuenta al iniciar sesión: la primera visible según la prioridad
+ * de su puesto. Con plantillas de mínimo privilegio un repartidor no ve «Hoy»; mandarlo ahí
+ * lo dejaría en una pantalla que no es la suya.
+ */
+export function seccionInicio(
+  rol: Rol,
+  permisos: readonly PermisoCodigo[],
+): SeccionPanel {
+  const orden = [...PRIORIDAD_MOVIL_POR_ROL[rol], ...SECCIONES_PANEL];
+  return orden.find((s) => seccionVisible(s, permisos)) ?? "hoy";
+}
+
 type NavMovilItem = { id: SeccionPanel; mobile?: boolean };
 
 /**

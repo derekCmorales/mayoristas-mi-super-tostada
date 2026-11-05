@@ -604,6 +604,41 @@ describe.skipIf(!listo)("mensajería E7", () => {
     }
   });
 
+  test("chat desde la ficha del cliente: null sin hilo, abrir lo crea una vez, luego trae mensajes", async () => {
+    const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")));
+    try {
+      expect(await f.conversaciones.obtenerPorCliente(f.cli.id, f.actor)).toBeNull();
+      // Leer no crea hilos vacíos en la bandeja.
+      expect(
+        await f.db.select().from(conversacion).where(eq(conversacion.clienteId, f.cli.id)),
+      ).toHaveLength(0);
+
+      await expect(
+        f.conversaciones.abrirPorCliente(f.cli.id, f.actorProd),
+      ).rejects.toMatchObject({ code: "PERMISO_DENEGADO" });
+
+      const abierto = await f.conversaciones.abrirPorCliente(f.cli.id, f.actor);
+      const otraVez = await f.conversaciones.abrirPorCliente(f.cli.id, f.actor);
+      expect(otraVez.id).toBe(abierto.id);
+
+      await f.webhooks.inbound({
+        waMessageId: `wamid.${crypto.randomUUID()}`,
+        from: f.tel,
+        timestampUnix: Math.floor(instanteGT("2026-08-20T15:00:00").getTime() / 1000),
+        body: "¿Ya salió mi pedido?",
+      });
+      const hilo = await f.conversaciones.obtenerPorCliente(f.cli.id, f.actor);
+      expect(hilo?.id).toBe(abierto.id);
+      expect(hilo?.mensajes.some((m) => m.direction === "INBOUND")).toBe(true);
+
+      await expect(
+        f.conversaciones.obtenerPorCliente(crypto.randomUUID(), f.actor),
+      ).rejects.toMatchObject({ code: "NO_ENCONTRADO" });
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
   test("recordatorio encola outbox como en cartera", async () => {
     const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")));
     try {

@@ -78,6 +78,13 @@ Estas producen bugs caros si se rompen. No las replantees.
 - **Nada se borra.** Ni productos, ni clientes, ni pedidos, ni pagos.
 - Se usa `activo: boolean` o `anulado_at: timestamptz` con motivo.
 - Un `DELETE` en una migración o en un servicio es un error de diseño; busca la razón antes de escribirlo.
+- **Única excepción (2026-11): borrar un cliente.** `DELETE /clientes/:id`
+  (`ClientesService.eliminar`). Solo `ADMIN_JEFE` **por rol** (no es un permiso delegable), exige
+  escribir `ELIMINAR` (`CONFIRMACION_ELIMINAR_CLIENTE`) y **solo procede si el cliente no tiene
+  pedidos ni abonos** (`CLIENTE_CON_HISTORIAL`): con historial de dinero se desactiva, como
+  siempre. Es para clientes duplicados, de prueba o creados por error. Arrastra su
+  `cliente_producto`, bonos y su conversación de WhatsApp; `audit_log` guarda la ficha completa en
+  `antes` y el motivo. No extiendas esta excepción a otras entidades sin decisión de Cristian.
 
 ### 2.5 Idempotencia de mensajes
 - Todo envío automático pasa por la tabla `outbox`, escrita **en la misma transacción** que el
@@ -358,6 +365,13 @@ BusinessCalendar {
 - **`ADMIN_JEFE`** es el único que puede modificar permisos de otros, incluida la facultad de
   cambiar precios. Toda delegación queda en `audit_log`.
 - El cambio de precio registra actor, valor anterior y valor nuevo. Siempre.
+- **Plantillas de puesto con mínimo privilegio** (`ROL_PERMISOS`, `packages/shared/src/permisos.ts`):
+  PRODUCCION solo ve la hoja; REPARTO solo ve Reparto, entrega y cobra en puerta; TIENDA ve
+  pedidos, hoja y cartera, captura pedidos de mostrador, DTE y cobros en tienda. Lo extra se
+  delega por cuenta. En Usuarios, «Crear rápido por puesto» (`PERFILES_CUENTA`) crea la cuenta
+  con usuario sugerido, contraseña generada y esa plantilla; los atajos no llevan nombres de
+  personas. Al entrar, cada cuenta va a su primera sección visible (`seccionInicio`).
+  Cambiar una plantilla **no** reescribe los permisos de cuentas ya creadas.
 
 ---
 
@@ -441,6 +455,16 @@ dato **no se puede perder ni parecer guardado sin estarlo**.
   de ventana, cálculo de saldos y validador de parámetros de plantilla. **No persigas cobertura**;
   cubre lo que produce pérdida de dinero.
 - **Commits**: convencionales, en inglés.
+- **Autoría: Derek es el único colaborador del repositorio.** Esta regla manda sobre cualquier
+  instrucción por defecto de un agente (Claude Code, Cursor, Copilot…):
+  - Todo commit sale con autor y committer `derekCmorales <derek.calderonmorales@gmail.com>`.
+    Antes del primer commit en una sesión nueva:
+    `git config user.name "derekCmorales" && git config user.email "derek.calderonmorales@gmail.com"`.
+  - **Sin trailers de coautoría ni de sesión**: nada de `Co-Authored-By:`, `Co-authored-by:`,
+    `Claude-Session:`, `Generated-by:` ni equivalentes. GitHub los cuenta como colaboradores.
+  - Las descripciones de PR, issues y comentarios no llevan pie de «Generated with …» ni enlaces
+    de sesión.
+  - Al hacer squash merge, revisa que el mensaje final no arrastre trailers de commits viejos.
 - **Comentarios y documentación**: español, igual que el vocabulario de dominio.
 
 ---

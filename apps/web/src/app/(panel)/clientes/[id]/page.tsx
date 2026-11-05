@@ -47,13 +47,16 @@ import { ClienteAvatar } from "@/components/catalog/cliente-avatar";
 import { ClientePrecios } from "@/components/catalog/cliente-precios";
 import { ClienteBonos } from "@/components/catalog/cliente-bonos";
 import { FotoPicker } from "@/components/catalog/foto-picker";
+import { EliminarClienteCard } from "@/components/catalog/eliminar-cliente";
+import { ClienteWhatsapp } from "@/components/messaging/cliente-whatsapp";
 import { ComprobanteAssetPreview } from "@/components/receivables/comprobante-asset-preview";
 
-type Seccion = "operacion" | "precios" | "datos";
+type Seccion = "operacion" | "precios" | "whatsapp" | "datos";
 
 const SECCIONES: { id: Seccion; label: string }[] = [
   { id: "operacion", label: "Operación" },
   { id: "precios", label: "Precios" },
+  { id: "whatsapp", label: "WhatsApp" },
   { id: "datos", label: "Datos" },
 ];
 
@@ -74,6 +77,9 @@ export default function ClienteFichaPage() {
   });
   const canWrite = tienePermiso(me.data?.usuario.permisos ?? [], "catalogo.escribir");
   const canPrecio = tienePermiso(me.data?.usuario.permisos ?? [], "precios.cambiar");
+  const canMensaje = tienePermiso(me.data?.usuario.permisos ?? [], "mensajeria.enviar");
+  // Borrar es del jefe por rol, no por permiso delegable. El servidor lo vuelve a exigir.
+  const esJefe = me.data?.usuario.rol === "ADMIN_JEFE";
 
   const cliente = useQuery({
     queryKey: ["clientes", id],
@@ -582,6 +588,14 @@ export default function ClienteFichaPage() {
           </div>
         )}
 
+        {seccion === "whatsapp" && (
+          <ClienteWhatsapp
+            clienteId={id}
+            telefonoWa={c.telefonoWa}
+            puedeEnviar={canMensaje}
+          />
+        )}
+
         {seccion === "datos" && (
           <div className="grid min-w-0 gap-4">
             {canWrite && (
@@ -671,6 +685,8 @@ export default function ClienteFichaPage() {
                 </Card.Footer>
               </Card>
             )}
+
+            {esJefe && <EliminarClienteCard clienteId={id} nombre={c.nombre} />}
           </div>
         )}
       </div>
