@@ -2,8 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, eq } from "drizzle-orm";
 import { cliente, organizacion } from "@misupertostada/db";
 import {
+  HORA_INVITACION,
   TIPO_OUTBOX_INVITACION,
   horaEnZona,
+  telefonoWaParaEnvio,
   type Clock,
 } from "@misupertostada/shared";
 import { CLOCK, DRIZZLE } from "../shared/tokens";
@@ -24,9 +26,14 @@ export class InvitacionJob {
 
   async tick(): Promise<number> {
     const now = this.clock.now();
-    if (horaEnZona(now) !== "18:00") return 0;
+    if (horaEnZona(now) !== HORA_INVITACION) return 0;
 
-    const orgs = await this.db.select({ id: organizacion.id }).from(organizacion);
+    // Con el interruptor apagado ni siquiera se encola: al encenderlo no
+    // sale una invitación vieja.
+    const orgs = await this.db
+      .select({ id: organizacion.id })
+      .from(organizacion)
+      .where(eq(organizacion.envioAutomaticoActivo, true));
     let n = 0;
     for (const { id: organizacionId } of orgs) {
       const cal = await this.calendar.load(organizacionId);
@@ -39,7 +46,7 @@ export class InvitacionJob {
           and(eq(cliente.activo, true), eq(cliente.organizacionId, organizacionId)),
         );
       for (const cli of clientes) {
-        if (!cli.telefonoWa || !cli.tokenPortalCifrado) continue;
+        if (!telefonoWaParaEnvio(cli.telefonoWa) || !cli.tokenPortalCifrado) continue;
         if (!this.crypto.decrypt(cli.tokenPortalCifrado)) continue;
         const row = await this.outbox.insert({
           tipo: TIPO_OUTBOX_INVITACION,

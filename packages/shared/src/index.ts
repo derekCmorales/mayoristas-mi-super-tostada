@@ -483,6 +483,14 @@ export {
   TIPO_OUTBOX_INVITACION,
   TIPO_OUTBOX_PEDIDO_CONFIRMADO,
   TIPO_OUTBOX_RECORDATORIO,
+  HORA_INVITACION,
+  MOTIVOS_AVISO_OMITIDO,
+  PROPOSITOS_AUTOMATICOS,
+  cambiarEnvioAutomaticoRequestSchema,
+  envioAutomaticoEstadoSchema,
+  type CambiarEnvioAutomaticoRequest,
+  type EnvioAutomaticoEstado,
+  type MotivoAvisoOmitido,
   conexionWabaPublicaSchema,
   conversacionBandejaSchema,
   conversacionDetalleSchema,
@@ -492,7 +500,6 @@ export {
   mapearPropositoRequestSchema,
   mensajePublicoSchema,
   messagingSseEventSchema,
-  normalizarTelefonoWa,
   paramsConfirmacion,
   paramsEstadoCuenta,
   paramsInvitacion,
@@ -520,3 +527,14 @@ export {
   type RecordatorioCobroRequest,
 } from "./messaging";
 export * from "./meta-gestion";
+export {
+  CODIGO_PAIS_GT,
+  TELEFONO_WA_ESTADO_ETIQUETA,
+  formatearTelefonoWa,
+  normalizarTelefonoWa,
+  revisarTelefonoWa,
+  telefonoWaParaEnvio,
+  telefonoWaSchema,
+  type TelefonoWaEstado,
+  type TelefonoWaRevision,
+} from "./telefono";

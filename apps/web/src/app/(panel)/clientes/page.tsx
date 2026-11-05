@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Description,
+  FieldError,
   Input,
   Label,
   Modal,
@@ -15,9 +16,11 @@ import {
 } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 import {
   crearClienteRequestSchema,
+  normalizarTelefonoWa,
   tienePermiso,
   type ActorPublico,
   type CarteraLista,
@@ -39,19 +42,36 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FotoPicker } from "@/components/catalog/foto-picker";
 import { ClienteMiniCard } from "@/components/catalog/cliente-mini-card";
 import { ClientesResumen } from "@/components/catalog/clientes-resumen";
+import {
+  ayudaTelefonoWa,
+  problemaWhatsapp,
+} from "@/components/catalog/telefono-wa";
 
-type FiltroActivo = "activos" | "todos" | "con_saldo";
+type FiltroActivo = "activos" | "todos" | "con_saldo" | "revisar_whatsapp";
 
 const FILTROS = [
   { id: "activos", label: "Activos" },
   { id: "con_saldo", label: "Con saldo" },
+  { id: "revisar_whatsapp", label: "Revisar WhatsApp" },
   { id: "todos", label: "Todos" },
 ] as const;
 
 export default function ClientesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientesVista />
+    </Suspense>
+  );
+}
+
+function ClientesVista() {
   const qc = useQueryClient();
+  const search = useSearchParams();
   const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState<FiltroActivo>("activos");
+  /* Configuración → Plantillas de Meta enlaza aquí con `?whatsapp=revisar`. */
+  const [filtro, setFiltro] = useState<FiltroActivo>(
+    search.get("whatsapp") === "revisar" ? "revisar_whatsapp" : "activos",
+  );
   const [crear, setCrear] = useState(false);
 
   const me = useQuery({
@@ -86,6 +106,9 @@ export default function ClientesPage() {
     return (clientes.data ?? [])
       .filter((c) => {
         if (filtro === "activos" && !c.activo) return false;
+        if (filtro === "revisar_whatsapp" && (!c.activo || !problemaWhatsapp(c))) {
+          return false;
+        }
         if (
           filtro === "con_saldo" &&
           cobranzaDeCliente(c, cobranzaMap).facturasPendientes === 0
@@ -93,7 +116,8 @@ export default function ClientesPage() {
           return false;
         }
         if (!needle) return true;
-        return [c.nombre, c.contacto ?? "", c.telefonoWa ?? ""]
+        /* El teléfono se guarda +50255551234: se busca también por dígitos. */
+        return [c.nombre, c.contacto ?? "", c.telefonoWa ?? "", normalizarTelefonoWa(c.telefonoWa ?? "")]
           .join(" ")
           .toLowerCase()
           .includes(needle);
@@ -111,6 +135,10 @@ export default function ClientesPage() {
   }, [clientes.data, q, filtro, cobranzaMap]);
 
   const loading = clientes.isLoading || cartera.isLoading;
+  const porRevisar = useMemo(
+    () => (clientes.data ?? []).filter((c) => c.activo && problemaWhatsapp(c)).length,
+    [clientes.data],
+  );
   const total = clientes.data?.length ?? 0;
 
   return (
@@ -161,6 +189,9 @@ export default function ClientesPage() {
                 <ToggleButton key={f.id} id={f.id}>
                   {i > 0 && <ToggleButtonGroup.Separator />}
                   {f.label}
+                  {f.id === "revisar_whatsapp" && porRevisar > 0 ? (
+                    <span className="ml-1 tabular-nums text-peligro">{porRevisar}</span>
+                  ) : null}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
@@ -188,12 +219,14 @@ export default function ClientesPage() {
                 ? "Pruebe con el nombre comercial, el contacto o el teléfono."
                 : filtro === "con_saldo"
                   ? "Nadie tiene facturas pendientes ahora."
+                  : filtro === "revisar_whatsapp"
+                    ? "Todos los clientes activos tienen WhatsApp válido y enlace del portal."
                   : filtro === "activos"
                     ? "No hay clientes activos. Cambie a Todos o cree una ficha nueva."
                     : "Cree la ficha nueva. El portal y los alias viven dentro de cada cliente."
             }
             action={
-              canWrite && !q && filtro !== "con_saldo" ? (
+              canWrite && !q && filtro !== "con_saldo" && filtro !== "revisar_whatsapp" ? (
                 <Button
                   className="button--accent"
                   size="sm"
@@ -250,6 +283,7 @@ function ClienteNuevoModal({
   const [error, setError] = useState<string | null>(null);
   const [foto, setFoto] = useState<File | null>(null);
   const [campos, setCampos] = useState(VACIO);
+  const ayudaTel = ayudaTelefonoWa(campos.telefonoWa);
 
   const set = (k: keyof typeof VACIO) => (value: string) =>
     setCampos((prev) => ({ ...prev, [k]: value }));
@@ -265,7 +299,10 @@ function ClienteNuevoModal({
         notasPermanentes: campos.notasPermanentes.trim() || null,
         limiteFacturasPendientes: limite ? Number(limite) : null,
       });
-      if (!parsed.success) throw new Error("Revise los datos del cliente");
+      if (!parsed.success) {
+        const tel = parsed.error.issues.find((i) => i.path[0] === "telefonoWa");
+        throw new Error(tel ? `Teléfono WhatsApp: ${tel.message}` : "Revise los datos del cliente");
+      }
 
       const creado = await api<ClientePublico>("/clientes", {
         method: "POST",
@@ -344,9 +381,15 @@ function ClienteNuevoModal({
                     type="tel"
                     value={campos.telefonoWa}
                     onChange={set("telefonoWa")}
+                    isInvalid={ayudaTel.invalido}
                   >
                     <Label>Teléfono WhatsApp</Label>
-                    <Input placeholder="+502 …" />
+                    <Input inputMode="tel" placeholder="5555 1234" />
+                    {ayudaTel.invalido ? (
+                      <FieldError>{ayudaTel.texto}</FieldError>
+                    ) : (
+                      <Description>{ayudaTel.texto}</Description>
+                    )}
                   </TextField>
                 </div>
               </fieldset>

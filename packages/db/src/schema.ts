@@ -99,6 +99,14 @@ export const organizacion = pgTable("organizacion", {
     withTimezone: true,
     mode: "date",
   }),
+  /**
+   * Interruptor de los avisos automáticos de WhatsApp (invitación diaria y
+   * confirmación de pedido). Nace apagado: conectar Meta no debe bastar para
+   * que el sistema empiece a escribirle a los restaurantes.
+   */
+  envioAutomaticoActivo: boolean("envio_automatico_activo")
+    .notNull()
+    .default(false),
   activo: boolean("activo").notNull().default(true),
   ...timestamps,
 });

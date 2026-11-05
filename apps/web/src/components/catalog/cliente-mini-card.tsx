@@ -2,8 +2,9 @@
 
 import { Card, Chip } from "@heroui/react";
 import Link from "next/link";
-import type { ClientePublico } from "@misupertostada/shared";
+import { formatearTelefonoWa, type ClientePublico } from "@misupertostada/shared";
 import { ClienteAvatar } from "@/components/catalog/cliente-avatar";
+import { WhatsappChip } from "@/components/catalog/telefono-wa";
 import { Money } from "@/components/domain/money";
 import { cn } from "@/lib/utils";
 import {
@@ -65,10 +66,11 @@ export function ClienteMiniCard({
                   Inactivo
                 </Chip>
               )}
+              {cliente.activo && <WhatsappChip cliente={cliente} />}
             </div>
             <Card.Description className="mt-0.5 truncate">
               {cliente.contacto ?? "Sin contacto"}
-              {cliente.telefonoWa ? ` · ${cliente.telefonoWa}` : ""}
+              {cliente.telefonoWa ? ` · ${formatearTelefonoWa(cliente.telefonoWa)}` : ""}
             </Card.Description>
             <p className="mt-0.5 text-xs tabular-nums text-tinta-500">
               {cliente.horarioEntregaFijo

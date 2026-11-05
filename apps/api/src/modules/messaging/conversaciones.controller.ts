@@ -14,6 +14,7 @@ import type { Actor } from "../identity/actor";
 import { ConversacionService } from "./conversacion.service";
 import { PlantillaService } from "./plantilla.service";
 import { ConexionWabaService } from "./conexion.service";
+import { EnvioAutomaticoService } from "./envio-automatico.service";
 
 @Controller()
 export class ConversacionesController {
@@ -21,6 +22,7 @@ export class ConversacionesController {
     private readonly conversaciones: ConversacionService,
     private readonly plantillas: PlantillaService,
     private readonly conexion: ConexionWabaService,
+    private readonly envioAutomatico: EnvioAutomaticoService,
   ) {}
 
   @Get("conversaciones")
@@ -89,6 +91,17 @@ export class ConversacionesController {
   @Get("mensajeria/conexion")
   async conexionEstado(@CurrentActor() actor: Actor) {
     return envelopeOk(await this.conexion.estado(actor));
+  }
+
+  @Get("mensajeria/envio-automatico")
+  async envioAutomaticoEstado(@CurrentActor() actor: Actor) {
+    return envelopeOk(await this.envioAutomatico.estado(actor));
+  }
+
+  @Put("mensajeria/envio-automatico")
+  @RequierePermiso("mensajeria.conectar")
+  async envioAutomaticoCambiar(@Body() body: unknown, @CurrentActor() actor: Actor) {
+    return envelopeOk(await this.envioAutomatico.cambiar(body, actor));
   }
 
   @Post("mensajeria/oauth/callback")

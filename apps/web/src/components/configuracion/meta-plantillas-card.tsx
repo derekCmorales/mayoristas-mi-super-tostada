@@ -12,6 +12,7 @@ import {
   Modal,
   SearchField,
   Select,
+  Switch,
   TextField,
 } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,11 +28,13 @@ import {
   PauseCircle,
   PencilLine,
   Plus,
+  Power,
   RefreshCw,
   Trash2,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   META_CATEGORIA_ETIQUETA,
@@ -39,9 +42,11 @@ import {
   PLANTILLA_PROPOSITOS,
   PROPOSITO_ETIQUETA,
   borradorDeComponentes,
+  PROPOSITOS_AUTOMATICOS,
   extraerCuerpoPlantilla,
   motivoRechazoLegible,
   type ConexionWabaPublica,
+  type EnvioAutomaticoEstado,
   type PlantillaMeta,
   type PlantillaProposito,
 } from "@misupertostada/shared";
@@ -278,6 +283,8 @@ export function MetaPlantillasCard() {
           </Alert>
         ) : null}
 
+        <EnvioAutomaticoPanel desarrollo={desarrollo} />
+
         <AvisosDelSistema plantillas={todas} cargando={lista.isLoading} onCambio={() => refrescar()} />
 
         <section className="grid gap-3" aria-labelledby="todas-plantillas">
@@ -404,11 +411,174 @@ export function MetaPlantillasCard() {
 
 /* ─── Avisos automáticos ─────────────────────────────────────────────── */
 
-const AVISO_CUANDO: Record<PlantillaProposito, string> = {
-  INVITACION: "Al abrir la toma de pedidos",
-  CONFIRMACION: "Al confirmar un pedido",
-  ESTADO_CUENTA: "Al enviar el estado de cuenta",
-};
+const CLAVE_ENVIO = ["mensajeria", "envio-automatico"] as const;
+
+function esAutomatico(prop: PlantillaProposito): boolean {
+  return (PROPOSITOS_AUTOMATICOS as readonly string[]).includes(prop);
+}
+
+/** Cuándo sale cada aviso, dicho como lo vive el restaurante. */
+function avisoCuando(prop: PlantillaProposito, horaInvitacion: string): { cuando: string; detalle: string } {
+  switch (prop) {
+    case "INVITACION":
+      return {
+        cuando: `Automático · todos los días a las ${horaInvitacion}`,
+        detalle:
+          "Solo los días con la ventana de pedidos abierta a esa hora. Uno por cliente por día, con el enlace a su portal.",
+      };
+    case "CONFIRMACION":
+      return {
+        cuando: "Automático · al registrar un pedido nuevo",
+        detalle:
+          "Por el portal o capturado en el panel. Editar el pedido después no la reenvía.",
+      };
+    case "ESTADO_CUENTA":
+      return {
+        cuando: "Manual · solo cuando alguien lo manda",
+        detalle:
+          "Desde Conversaciones o Cartera, con el PDF adjunto. El interruptor no lo afecta.",
+      };
+  }
+}
+
+/**
+ * El interruptor general. Nace apagado: conectar Meta y aprobar plantillas no
+ * basta para que el sistema empiece a escribirle a los restaurantes.
+ */
+function EnvioAutomaticoPanel({ desarrollo }: { desarrollo: boolean }) {
+  const qc = useQueryClient();
+  const [confirmar, setConfirmar] = useState(false);
+  const estado = useQuery({
+    queryKey: CLAVE_ENVIO,
+    queryFn: () => api<EnvioAutomaticoEstado>("/mensajeria/envio-automatico"),
+  });
+  const cambiar = useMutation<EnvioAutomaticoEstado, Error, boolean>({
+    mutationFn: (activo) =>
+      api<EnvioAutomaticoEstado>("/mensajeria/envio-automatico", {
+        method: "PUT",
+        body: JSON.stringify({ activo }),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(CLAVE_ENVIO, data);
+      setConfirmar(false);
+      toastSuccess(data.activo ? "Envío automático encendido" : "Envío automático apagado");
+    },
+    onError: toastFromError,
+  });
+
+  const d = estado.data;
+  const activo = d?.activo === true;
+  const c = d?.clientes;
+  const fuera = c ? c.sinWhatsapp + c.whatsappInvalido + c.sinPortal : 0;
+
+  return (
+    <section
+      aria-labelledby="envio-automatico"
+      className={cn(
+        "grid gap-3 rounded-tarjeta border p-4",
+        activo
+          ? "border-[var(--green-300)] bg-marca-soft"
+          : "border-[var(--border-subtle)] bg-[var(--ink-50)]",
+      )}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-campo",
+              activo ? "bg-marca text-blanco" : "bg-blanco text-tinta-500",
+            )}
+          >
+            <Power size={18} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h3 id="envio-automatico" className="text-sm font-semibold text-tinta-900">
+              Envío automático {activo ? "encendido" : "apagado"}
+            </h3>
+            <p className="max-w-[60ch] text-xs leading-relaxed text-tinta-500 text-pretty">
+              {activo
+                ? `La invitación sale a las ${d?.horaInvitacion} y la confirmación al registrar cada pedido. Apáguelo y lo que esté en cola no sale.`
+                : "Nada sale solo: ni la invitación diaria ni la confirmación de pedido. Lo que se acumule mientras está apagado se descarta, no se manda al encender."}
+              {desarrollo ? " Modo desarrollo: aunque esté encendido, Meta está simulado." : ""}
+            </p>
+          </div>
+        </div>
+        {estado.isLoading ? (
+          <Skeleton className="h-8 w-28 rounded-campo" />
+        ) : (
+          <Switch
+            aria-label="Envío automático de avisos"
+            isSelected={activo}
+            isDisabled={cambiar.isPending || !d}
+            onChange={(v) => (v ? setConfirmar(true) : cambiar.mutate(false))}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              <span className="text-sm font-medium">{activo ? "Encendido" : "Apagado"}</span>
+            </Switch.Content>
+          </Switch>
+        )}
+      </div>
+
+      {c ? (
+        <p className="text-xs tabular-nums text-tinta-500">
+          <span className="font-semibold text-tinta-900">
+            {c.listos} de {c.activos} clientes activos
+          </span>{" "}
+          los recibirían.
+          {fuera > 0 ? (
+            <>
+              {" "}
+              Quedan fuera {[
+                c.sinWhatsapp ? `${c.sinWhatsapp} sin WhatsApp` : null,
+                c.whatsappInvalido ? `${c.whatsappInvalido} con número inválido` : null,
+                c.sinPortal ? `${c.sinPortal} sin enlace del portal` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+              .{" "}
+              <Link href="/clientes?whatsapp=revisar" className="font-semibold text-marca">
+                Revisar clientes
+              </Link>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+
+      <AlertDialog.Backdrop isOpen={confirmar} onOpenChange={(open) => (!open ? setConfirmar(false) : undefined)}>
+        <AlertDialog.Container>
+          <AlertDialog.Dialog>
+            <AlertDialog.CloseTrigger />
+            <AlertDialog.Header>
+              <AlertDialog.Icon status="warning" />
+              <AlertDialog.Heading>¿Encender el envío automático?</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>
+              <ul className="grid list-disc gap-1.5 pl-5 text-sm text-tinta-800">
+                <li>
+                  Hoy a las {d?.horaInvitacion}, si la ventana está abierta, sale la invitación a{" "}
+                  <strong className="tabular-nums">{c?.listos ?? 0}</strong> clientes.
+                </li>
+                <li>Cada pedido nuevo manda su confirmación al restaurante.</li>
+                <li>Los mensajes salen de verdad por WhatsApp y Meta los cobra.</li>
+              </ul>
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button variant="tertiary" onPress={() => setConfirmar(false)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" isDisabled={cambiar.isPending} onPress={() => cambiar.mutate(true)}>
+                {cambiar.isPending ? "Encendiendo…" : "Encender"}
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
+    </section>
+  );
+}
 
 /**
  * Lo que el sistema manda solo y con qué plantilla. Es la pregunta que importa
@@ -424,6 +594,12 @@ function AvisosDelSistema({
   onCambio: () => void;
 }) {
   const aprobadas = plantillas.filter((p) => p.status === "APPROVED");
+  const envio = useQuery({
+    queryKey: CLAVE_ENVIO,
+    queryFn: () => api<EnvioAutomaticoEstado>("/mensajeria/envio-automatico"),
+  });
+  const envioActivo = envio.data?.activo === true;
+  const horaInvitacion = envio.data?.horaInvitacion ?? "—";
   const asignar = useMutation<unknown, Error, { proposito: PlantillaProposito; plantillaId: string }>({
     mutationFn: (body) =>
       api("/mensajeria/propositos", { method: "PUT", body: JSON.stringify(body) }),
@@ -441,13 +617,24 @@ function AvisosDelSistema({
           Avisos automáticos
         </h3>
         <p className="text-xs text-tinta-500">
-          Solo sale un aviso si su plantilla está aprobada por Meta.
+          Solo sale un aviso si su plantilla está aprobada por Meta y, en los
+          automáticos, si el envío automático está encendido.
         </p>
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {PLANTILLA_PROPOSITOS.map((prop) => {
           const actual = plantillas.find((p) => p.proposito === prop) ?? null;
-          const lista = actual?.status === "APPROVED";
+          const aprobada = actual?.status === "APPROVED";
+          const apagado = esAutomatico(prop) && !envioActivo;
+          const lista = aprobada && !apagado;
+          const { cuando, detalle } = avisoCuando(prop, horaInvitacion);
+          const estadoTexto = !actual
+            ? "No sale: sin plantilla"
+            : !aprobada
+              ? `No sale: ${etiquetaStatus(actual.status).toLowerCase()}`
+              : apagado
+                ? "No sale: envío automático apagado"
+                : "Listo";
           const tono = actual ? tonoDe(actual.status) : null;
           const Icon = tono?.icon ?? XCircle;
           const opciones = aprobadas.some((p) => p.id === actual?.id) || !actual ? aprobadas : [actual, ...aprobadas];
@@ -456,22 +643,34 @@ function AvisosDelSistema({
               key={prop}
               className={cn(
                 "grid gap-3 rounded-campo border p-3",
-                lista ? "border-[var(--border-subtle)]" : "border-[var(--red-100)] bg-[var(--red-100)]/40",
+                lista
+                  ? "border-[var(--border-subtle)]"
+                  : aprobada && apagado
+                    ? "border-[var(--border-subtle)] bg-[var(--ink-50)]"
+                    : "border-[var(--red-100)] bg-[var(--red-100)]/40",
               )}
             >
               <div className="flex items-start gap-2.5">
-                <Icon
-                  size={18}
-                  className={cn("mt-0.5 shrink-0", lista ? "text-marca" : "text-peligro")}
-                  aria-hidden
-                />
-                <div className="min-w-0">
+                {aprobada && apagado ? (
+                  <PauseCircle size={18} className="mt-0.5 shrink-0 text-tinta-500" aria-hidden />
+                ) : (
+                  <Icon
+                    size={18}
+                    className={cn("mt-0.5 shrink-0", lista ? "text-marca" : "text-peligro")}
+                    aria-hidden
+                  />
+                )}
+                <div className="grid min-w-0 gap-0.5">
                   <p className="text-sm font-semibold text-tinta-900">{PROPOSITO_ETIQUETA[prop]}</p>
-                  <p className="text-xs text-tinta-500">
-                    {AVISO_CUANDO[prop]} ·{" "}
-                    <span className={lista ? "text-marca" : "font-semibold text-peligro"}>
-                      {actual ? (lista ? "Listo" : `No sale: ${etiquetaStatus(actual.status).toLowerCase()}`) : "No sale: sin plantilla"}
-                    </span>
+                  <p className="text-xs font-medium text-tinta-800">{cuando}</p>
+                  <p className="text-xs text-tinta-500 text-pretty">{detalle}</p>
+                  <p
+                    className={cn(
+                      "text-xs",
+                      lista ? "text-marca" : aprobada && apagado ? "font-semibold text-tinta-500" : "font-semibold text-peligro",
+                    )}
+                  >
+                    {estadoTexto}
                   </p>
                 </div>
               </div>

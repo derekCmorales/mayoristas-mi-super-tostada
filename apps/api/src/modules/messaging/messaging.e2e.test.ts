@@ -48,6 +48,7 @@ import { WebhookService, metaInboundPayload, metaStatusPayload, metaTemplateStat
 import { ConversacionService } from "./conversacion.service";
 import { MessagingDispatcher } from "./messaging.dispatcher";
 import { InvitacionJob } from "./invitacion.job";
+import { EnvioAutomaticoService } from "./envio-automatico.service";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,7 +71,10 @@ function relojControlado(inicial: Date): Clock & { set(d: Date): void } {
   };
 }
 
-async function fixture(clock: Clock) {
+async function fixture(
+  clock: Clock,
+  opciones: { envioAutomatico?: boolean } = {},
+) {
   process.env.APP_ENCRYPTION_KEY ??= "ab".repeat(32);
   const { client, db } = openTestDb();
   const audit = new AuditWriter(db);
@@ -92,6 +96,7 @@ async function fixture(clock: Clock) {
     plantillas,
     webhooks,
   );
+  const envioAutomatico = new EnvioAutomaticoService(db, audit);
   const dispatcher = new MessagingDispatcher(
     db,
     clock,
@@ -101,6 +106,7 @@ async function fixture(clock: Clock) {
     enc,
     audit,
     calendar,
+    envioAutomatico,
   );
   const registry = new OutboxDispatcherRegistry();
   registry.register(dispatcher);
@@ -108,6 +114,10 @@ async function fixture(clock: Clock) {
   const invitaciones = new InvitacionJob(db, clock, calendar, outboxWriter, enc);
 
   const org = await crearOrgDePrueba(db, "org-e7-");
+  await db
+    .update(organizacion)
+    .set({ envioAutomaticoActivo: opciones.envioAutomatico ?? true })
+    .where(eq(organizacion.id, org!.id));
   const username = `jefe-${crypto.randomUUID().slice(0, 8)}`;
   const [jefe] = await db
     .insert(usuario)
@@ -137,7 +147,9 @@ async function fixture(clock: Clock) {
   // La BD de test es compartida y nunca se limpia: con 4 dígitos aleatorios
   // los números chocan con clientes de corridas viejas y el webhook entrega la
   // conversación a la organización equivocada. 12 dígitos de UUID no chocan.
-  const tel = `502${BigInt(`0x${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`)
+  // Prefijo internacional (+1) para que el número sea enviable: un 502 con 12
+  // dígitos no es un teléfono de Guatemala.
+  const tel = `1${BigInt(`0x${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`)
     .toString()
     .padStart(12, "0")
     .slice(-12)}`;
@@ -163,6 +175,7 @@ async function fixture(clock: Clock) {
     processor,
     invitaciones,
     plantillas,
+    envioAutomatico,
     actor,
     actorProd,
     orgId: org!.id,
@@ -689,5 +702,114 @@ describe.skipIf(!listo)("mensajería E7", () => {
     } finally {
       await f.client.end({ timeout: 1 });
     }
+  });
+
+  describe("interruptor de envío automático", () => {
+    async function confirmacionEncolada(f: Awaited<ReturnType<typeof fixture>>) {
+      const [ped] = await f.db
+        .insert(pedido)
+        .values({
+          organizacionId: f.orgId,
+          correlativo: 9101,
+          fechaOperacion: "2026-08-21",
+          fechaEntrega: "2026-08-22",
+          clienteId: f.cli.id,
+          estado: "CONFIRMADO",
+          origen: "PORTAL",
+        })
+        .returning({ id: pedido.id });
+      const [row] = await f.db
+        .insert(outbox)
+        .values({
+          tipo: TIPO_OUTBOX_PEDIDO_CONFIRMADO,
+          destinatarioId: f.cli.id,
+          fechaOperacion: "2026-08-21",
+          payload: { pedidoId: ped!.id, clienteId: f.cli.id, fechaOperacion: "2026-08-21" },
+        })
+        .returning({ id: outbox.id });
+      return row!.id;
+    }
+
+    async function omisiones(f: Awaited<ReturnType<typeof fixture>>, outboxId: string) {
+      return f.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.entidadId, outboxId), eq(auditLog.accion, "mensajeria.omitido")));
+    }
+
+    test("apagado: no encola invitaciones y la confirmación se da por atendida sin salir", async () => {
+      const clock = relojControlado(instanteGT("2026-08-20T18:00:00"));
+      const f = await fixture(clock, { envioAutomatico: false });
+      try {
+        // El tick recorre todas las organizaciones de la base de test: se
+        // mira solo la de este cliente.
+        await f.invitaciones.tick();
+        const invitaciones = await f.db
+          .select()
+          .from(outbox)
+          .where(and(eq(outbox.tipo, "InvitacionDiaria"), eq(outbox.destinatarioId, f.cli.id)));
+        expect(invitaciones).toHaveLength(0);
+        const id = await confirmacionEncolada(f);
+        await f.processor.processRow(id);
+        expect(f.fake.envios).toHaveLength(0);
+        const [om] = await omisiones(f, id);
+        expect(om?.despues).toMatchObject({ motivo: "ENVIO_AUTOMATICO_APAGADO", proposito: "CONFIRMACION" });
+      } finally {
+        await f.client.end({ timeout: 1 });
+      }
+    });
+
+    test("encender queda en audit_log y el estado cuenta clientes listos", async () => {
+      const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")), { envioAutomatico: false });
+      try {
+        const antes = await f.envioAutomatico.estado(f.actor);
+        expect(antes.activo).toBe(false);
+        expect(antes.horaInvitacion).toBe("18:00");
+        expect(antes.clientes.listos).toBe(1);
+        const despues = await f.envioAutomatico.cambiar({ activo: true }, f.actor);
+        expect(despues.activo).toBe(true);
+        const audits = await f.db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.entidadId, f.orgId),
+              eq(auditLog.accion, "mensajeria.envio_automatico.encender"),
+            ),
+          );
+        expect(audits).toHaveLength(1);
+      } finally {
+        await f.client.end({ timeout: 1 });
+      }
+    });
+
+    test("teléfono inválido: no sale y queda el motivo", async () => {
+      const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")));
+      try {
+        await f.db.update(cliente).set({ telefonoWa: "1234" }).where(eq(cliente.id, f.cli.id));
+        const id = await confirmacionEncolada(f);
+        await f.processor.processRow(id);
+        expect(f.fake.envios).toHaveLength(0);
+        const [om] = await omisiones(f, id);
+        expect(om?.despues).toMatchObject({ motivo: "TELEFONO_INVALIDO" });
+        const estado = await f.envioAutomatico.estado(f.actor);
+        expect(estado.clientes.whatsappInvalido).toBe(1);
+      } finally {
+        await f.client.end({ timeout: 1 });
+      }
+    });
+
+    test("número local guardado sin 502 sale con código de país", async () => {
+      const f = await fixture(relojControlado(instanteGT("2026-08-20T16:00:00")));
+      try {
+        await f.db.update(cliente).set({ telefonoWa: "5555-1234" }).where(eq(cliente.id, f.cli.id));
+        const id = await confirmacionEncolada(f);
+        await f.processor.processRow(id);
+        expect(f.fake.envios).toHaveLength(1);
+        expect(f.fake.envios[0]?.to).toBe("50255551234");
+      } finally {
+        await f.client.end({ timeout: 1 });
+      }
+    });
   });
 });

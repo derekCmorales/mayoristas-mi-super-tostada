@@ -14,6 +14,7 @@ import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   MENSAJE_VENTANA_WA_CERRADA,
+  formatearTelefonoWa,
   tienePermiso,
   type ActorPublico,
   type ConexionWabaPublica,
@@ -348,7 +349,7 @@ function ConversacionesInner() {
                           {hilo.clienteNombre}
                         </h2>
                         <p className="mt-0.5 truncate text-sm text-tinta-500">
-                          {hilo.telefonoWa ?? "sin WhatsApp"}
+                          {formatearTelefonoWa(hilo.telefonoWa) ?? "sin WhatsApp"}
                         </p>
                       </div>
                       <VentanaBadge

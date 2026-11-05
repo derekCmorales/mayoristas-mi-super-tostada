@@ -6,6 +6,7 @@ import {
   type Familia,
 } from "./estados";
 import { centavosSchema } from "./money";
+import { telefonoWaSchema } from "./telefono";
 
 export const FAMILIA_ETIQUETA: Record<Familia, string> = {
   TORTILLA: "Tortilla",
@@ -81,7 +82,7 @@ export type ProductoPublico = z.infer<typeof productoPublicoSchema>;
 export const crearClienteRequestSchema = z.object({
   nombre: z.string().trim().min(1).max(160),
   contacto: z.string().trim().max(160).nullable().optional(),
-  telefonoWa: z.string().trim().max(32).nullable().optional(),
+  telefonoWa: telefonoWaSchema,
   horarioEntregaFijo: horarioEntregaSchema.optional(),
   notasPermanentes: z.string().trim().max(2000).nullable().optional(),
   limiteFacturasPendientes: z.number().int().positive().nullable().optional(),
