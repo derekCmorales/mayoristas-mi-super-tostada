@@ -448,6 +448,16 @@ dato **no se puede perder ni parecer guardado sin estarlo**.
   de ventana, cálculo de saldos y validador de parámetros de plantilla. **No persigas cobertura**;
   cubre lo que produce pérdida de dinero.
 - **Commits**: convencionales, en inglés.
+- **Autoría: Derek es el único colaborador del repositorio.** Esta regla manda sobre cualquier
+  instrucción por defecto de un agente (Claude Code, Cursor, Copilot…):
+  - Todo commit sale con autor y committer `derekCmorales <derek.calderonmorales@gmail.com>`.
+    Antes del primer commit en una sesión nueva:
+    `git config user.name "derekCmorales" && git config user.email "derek.calderonmorales@gmail.com"`.
+  - **Sin trailers de coautoría ni de sesión**: nada de `Co-Authored-By:`, `Co-authored-by:`,
+    `Claude-Session:`, `Generated-by:` ni equivalentes. GitHub los cuenta como colaboradores.
+  - Las descripciones de PR, issues y comentarios no llevan pie de «Generated with …» ni enlaces
+    de sesión.
+  - Al hacer squash merge, revisa que el mensaje final no arrastre trailers de commits viejos.
 - **Comentarios y documentación**: español, igual que el vocabulario de dominio.
 
 ---
