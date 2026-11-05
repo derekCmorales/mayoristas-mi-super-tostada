@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { Providers } from "@/components/providers";
 import { useQuery } from "@tanstack/react-query";
 import type { ActorPublico } from "@misupertostada/shared";
+import { seccionInicio } from "@/lib/nav-vista";
 
 function HomeRedirect() {
   const router = useRouter();
@@ -16,7 +17,10 @@ function HomeRedirect() {
   });
 
   useEffect(() => {
-    if (me.data) router.replace("/hoy");
+    if (me.data) {
+      const { rol, permisos } = me.data.usuario;
+      router.replace(`/${seccionInicio(rol, permisos)}`);
+    }
     if (me.error instanceof ApiError) router.replace("/login");
   }, [me.data, me.error, router]);
 

@@ -3,6 +3,7 @@ import { permisosPlantilla, type Rol } from "@misupertostada/shared";
 import {
   esSoloLectura,
   repartirNavMovil,
+  seccionInicio,
   seccionVisible,
   SECCIONES_PANEL,
   type SeccionPanel,
@@ -32,25 +33,21 @@ function visibles(rol: Rol): SeccionPanel[] {
 }
 
 describe("visibilidad del menú por plantilla de puesto", () => {
-  test("las plantillas operativas ven las seis secciones del núcleo", () => {
-    for (const rol of ROLES.filter((r) => r !== "ADMIN_JEFE")) {
-      const vistas = visibles(rol);
-      for (const seccion of NUCLEO_OPERATIVO) {
-        expect(vistas).toContain(seccion);
-      }
+  test("ADMIN ve las seis secciones del núcleo", () => {
+    const vistas = visibles("ADMIN");
+    for (const seccion of NUCLEO_OPERATIVO) {
+      expect(vistas).toContain(seccion);
     }
+  });
+
+  test("mínimo privilegio: cada puesto operativo ve solo lo de su oficio", () => {
+    expect(visibles("PRODUCCION")).toEqual(["produccion"]);
+    expect(visibles("REPARTO")).toEqual(["reparto"]);
+    expect(visibles("TIENDA")).toEqual(["pedidos", "produccion", "cartera"]);
   });
 
   test("sin grants no se ve ninguna sección", () => {
     expect(SECCIONES_PANEL.filter((s) => seccionVisible(s, []))).toEqual([]);
-  });
-
-  test("PRODUCCION ve la jornada pero no catálogo ni conversaciones", () => {
-    const produccion = visibles("PRODUCCION");
-    expect(produccion).toEqual([...NUCLEO_OPERATIVO]);
-    expect(produccion).not.toContain("catalogo");
-    expect(produccion).not.toContain("clientes");
-    expect(produccion).not.toContain("conversaciones");
   });
 
   test("Catálogo, Clientes y Conversaciones siguen pidiendo su módulo", () => {
@@ -65,12 +62,8 @@ describe("visibilidad del menú por plantilla de puesto", () => {
 });
 
 describe("badge de solo lectura", () => {
-  test("PRODUCCION lee pedidos, reparto y cartera sin poder escribir", () => {
-    const permisos = permisosPlantilla("PRODUCCION");
-    expect(esSoloLectura("pedidos", permisos)).toBe(true);
-    expect(esSoloLectura("reparto", permisos)).toBe(true);
-    expect(esSoloLectura("cartera", permisos)).toBe(true);
-    expect(esSoloLectura("hoy", permisos)).toBe(true);
+  test("PRODUCCION solo ve su hoja, que no tiene escrituras para nadie", () => {
+    expect(esSoloLectura("produccion", permisosPlantilla("PRODUCCION"))).toBe(false);
   });
 
   test("no se marca donde el usuario sí puede actuar", () => {
@@ -98,15 +91,16 @@ describe("reparto móvil por puesto", () => {
         : undefined,
     }));
 
+  // El orden importa cuando el jefe delega más módulos que la plantilla mínima.
   test("REPARTO prioriza Reparto y Cartera en la barra", () => {
-    const { barra, extra } = repartirNavMovil(items(visibles("REPARTO")), "REPARTO");
+    const { barra, extra } = repartirNavMovil(items([...NUCLEO_OPERATIVO]), "REPARTO");
     expect(barra.map((i) => i.id)).toEqual(["reparto", "cartera", "hoy"]);
     expect(extra.map((i) => i.id)).toContain("pedidos");
     expect(extra.map((i) => i.id)).toContain("tablero");
   });
 
   test("PRODUCCION prioriza Producción y Pedidos en la barra", () => {
-    const { barra } = repartirNavMovil(items(visibles("PRODUCCION")), "PRODUCCION");
+    const { barra } = repartirNavMovil(items([...NUCLEO_OPERATIVO]), "PRODUCCION");
     expect(barra.map((i) => i.id)).toEqual(["produccion", "pedidos", "hoy"]);
   });
 
@@ -126,5 +120,20 @@ describe("reparto móvil por puesto", () => {
     const { barra, extra } = repartirNavMovil(cuatro, "REPARTO");
     expect(barra).toHaveLength(4);
     expect(extra).toHaveLength(0);
+  });
+});
+
+describe("sección de inicio", () => {
+  test("cada puesto entra a su módulo", () => {
+    expect(seccionInicio("REPARTO", permisosPlantilla("REPARTO"))).toBe("reparto");
+    expect(seccionInicio("PRODUCCION", permisosPlantilla("PRODUCCION"))).toBe("produccion");
+    expect(seccionInicio("TIENDA", permisosPlantilla("TIENDA"))).toBe("pedidos");
+    expect(seccionInicio("ADMIN", permisosPlantilla("ADMIN"))).toBe("hoy");
+    expect(seccionInicio("ADMIN_JEFE", permisosPlantilla("ADMIN_JEFE"))).toBe("hoy");
+  });
+
+  test("respeta lo delegado aunque no sea la prioridad del puesto", () => {
+    expect(seccionInicio("REPARTO", ["panel.catalogo"])).toBe("catalogo");
+    expect(seccionInicio("REPARTO", [])).toBe("hoy");
   });
 });

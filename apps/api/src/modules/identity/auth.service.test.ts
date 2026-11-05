@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { permiso, usuario } from "@misupertostada/db";
-import { permisosEfectivos, PERMISO_DESCRIPCION, PERMISOS, systemClock } from "@misupertostada/shared";
+import {
+  PERFILES_CUENTA,
+  permisosEfectivos,
+  permisosPlantilla,
+  PERMISO_DESCRIPCION,
+  PERMISOS,
+  systemClock,
+} from "@misupertostada/shared";
 import { AuthService } from "./auth.service";
 import { PasswordService } from "./password.service";
 import { SessionService } from "./session.service";
@@ -201,6 +208,28 @@ describe.skipIf(!listo)("UsuariosService", () => {
       );
       expect(sinCartera.permisos).not.toContain("panel.cartera");
       expect(sinCartera.permisos).not.toContain("cobranza.registrar_pago");
+    } finally {
+      await f.client.end({ timeout: 1 });
+    }
+  });
+
+  test("atajos por puesto: solo con el rol se siembra exactamente la plantilla mínima", async () => {
+    const f = await fixture();
+    try {
+      const jefe = actorJefe(f);
+      for (const perfil of PERFILES_CUENTA) {
+        const creado = await f.usuarios.crear(
+          {
+            username: `${perfil.usuarioBase}-${crypto.randomUUID().slice(0, 8)}`,
+            password: "k7mqp-3xh9d-wz2ra",
+            rol: perfil.rol,
+          },
+          jefe,
+        );
+        expect([...creado.permisos].sort()).toEqual(
+          [...permisosPlantilla(perfil.rol)].sort(),
+        );
+      }
     } finally {
       await f.client.end({ timeout: 1 });
     }

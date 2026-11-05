@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
-import { loginRequestSchema } from "@misupertostada/shared";
+import { loginRequestSchema, type ActorPublico } from "@misupertostada/shared";
 import { Button, Card } from "@heroui/react";
 import { toastError, toastFromError } from "@/components/ui/toaster";
 import { Wordmark } from "@/components/brand/wordmark";
 import { Field } from "@/components/ui/field";
 import { detectarEsMobile } from "@/lib/dispositivo";
 import { api } from "@/lib/api";
+import { seccionInicio } from "@/lib/nav-vista";
 
 type LoginValues = { username: string; password: string };
 
@@ -58,11 +59,14 @@ export default function LoginPage() {
                 return;
               }
               try {
-                await api("/auth/login", {
-                  method: "POST",
-                  body: JSON.stringify(parsed.data),
-                });
-                router.replace("/hoy");
+                const { usuario } = await api<{ usuario: ActorPublico }>(
+                  "/auth/login",
+                  {
+                    method: "POST",
+                    body: JSON.stringify(parsed.data),
+                  },
+                );
+                router.replace(`/${seccionInicio(usuario.rol, usuario.permisos)}`);
               } catch (err) {
                 toastFromError(err, "No se pudo entrar");
               }

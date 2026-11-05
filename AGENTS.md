@@ -365,6 +365,13 @@ BusinessCalendar {
 - **`ADMIN_JEFE`** es el único que puede modificar permisos de otros, incluida la facultad de
   cambiar precios. Toda delegación queda en `audit_log`.
 - El cambio de precio registra actor, valor anterior y valor nuevo. Siempre.
+- **Plantillas de puesto con mínimo privilegio** (`ROL_PERMISOS`, `packages/shared/src/permisos.ts`):
+  PRODUCCION solo ve la hoja; REPARTO solo ve Reparto, entrega y cobra en puerta; TIENDA ve
+  pedidos, hoja y cartera, captura pedidos de mostrador, DTE y cobros en tienda. Lo extra se
+  delega por cuenta. En Usuarios, «Crear rápido por puesto» (`PERFILES_CUENTA`) crea la cuenta
+  con usuario sugerido, contraseña generada y esa plantilla; los atajos no llevan nombres de
+  personas. Al entrar, cada cuenta va a su primera sección visible (`seccionInicio`).
+  Cambiar una plantilla **no** reescribe los permisos de cuentas ya creadas.
 
 ---
 

@@ -256,6 +256,13 @@ export {
   type PermisoNoDelegable,
 } from "./permisos";
 export {
+  PERFILES_CUENTA,
+  resumenPlantilla,
+  sugerirUsername,
+  type PerfilCuenta,
+  type PerfilCuentaId,
+} from "./perfiles-cuenta";
+export {
   MODULOS_ACCESO,
   MODULO_IDS,
   esModuloAccesoId,
