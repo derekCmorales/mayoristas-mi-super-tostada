@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -119,6 +120,16 @@ export class ClientesController {
     @CurrentActor() actor: Actor,
   ) {
     return envelopeOk(await this.clientes.activar(id, actor));
+  }
+
+  /** Borrado permanente. El servicio exige ADMIN_JEFE y la palabra ELIMINAR. */
+  @Delete(":id")
+  async eliminar(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @CurrentActor() actor: Actor,
+  ) {
+    return envelopeOk(await this.clientes.eliminar(id, body, actor));
   }
 
   @Post(":id/token-portal")

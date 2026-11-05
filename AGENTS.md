@@ -78,6 +78,13 @@ Estas producen bugs caros si se rompen. No las replantees.
 - **Nada se borra.** Ni productos, ni clientes, ni pedidos, ni pagos.
 - Se usa `activo: boolean` o `anulado_at: timestamptz` con motivo.
 - Un `DELETE` en una migración o en un servicio es un error de diseño; busca la razón antes de escribirlo.
+- **Única excepción (2026-11): borrar un cliente.** `DELETE /clientes/:id`
+  (`ClientesService.eliminar`). Solo `ADMIN_JEFE` **por rol** (no es un permiso delegable), exige
+  escribir `ELIMINAR` (`CONFIRMACION_ELIMINAR_CLIENTE`) y **solo procede si el cliente no tiene
+  pedidos ni abonos** (`CLIENTE_CON_HISTORIAL`): con historial de dinero se desactiva, como
+  siempre. Es para clientes duplicados, de prueba o creados por error. Arrastra su
+  `cliente_producto`, bonos y su conversación de WhatsApp; `audit_log` guarda la ficha completa en
+  `antes` y el motivo. No extiendas esta excepción a otras entidades sin decisión de Cristian.
 
 ### 2.5 Idempotencia de mensajes
 - Todo envío automático pasa por la tabla `outbox`, escrita **en la misma transacción** que el

@@ -154,6 +154,61 @@ export class ConversacionService {
     });
   }
 
+  /**
+   * Hilo de WhatsApp visto desde la ficha del cliente. `null` si aún no hay conversación:
+   * leerla no la crea, para no llenar la bandeja de hilos vacíos.
+   */
+  async obtenerPorCliente(
+    clienteId: string,
+    actor: Actor,
+  ): Promise<ConversacionDetalle | null> {
+    const [cli] = await this.db
+      .select({ id: cliente.id })
+      .from(cliente)
+      .where(
+        and(eq(cliente.id, clienteId), eq(cliente.organizacionId, actor.organizacionId)),
+      )
+      .limit(1);
+    if (!cli) {
+      throw new DomainException("NO_ENCONTRADO", "Cliente no encontrado", 404);
+    }
+    const [conv] = await this.db
+      .select({ id: conversacion.id })
+      .from(conversacion)
+      .where(eq(conversacion.clienteId, clienteId))
+      .limit(1);
+    return conv ? this.obtener(conv.id, actor) : null;
+  }
+
+  /**
+   * Abre (o reutiliza) el hilo del cliente para escribirle desde el panel aunque nunca haya
+   * escrito él primero. Solo quien puede enviar mensajes.
+   */
+  async abrirPorCliente(
+    clienteId: string,
+    actor: Actor,
+  ): Promise<{ id: string }> {
+    if (!tienePermiso(actor.permisos, "mensajeria.enviar")) {
+      throw new DomainException(
+        "PERMISO_DENEGADO",
+        "No tiene permiso para esta acción",
+        403,
+      );
+    }
+    const [cli] = await this.db
+      .select({ id: cliente.id })
+      .from(cliente)
+      .where(
+        and(eq(cliente.id, clienteId), eq(cliente.organizacionId, actor.organizacionId)),
+      )
+      .limit(1);
+    if (!cli) {
+      throw new DomainException("NO_ENCONTRADO", "Cliente no encontrado", 404);
+    }
+    const conv = await this.webhooks.ensureConversacion(clienteId);
+    return { id: conv.id };
+  }
+
   async marcarLeidos(id: string, actor: Actor): Promise<ConversacionDetalle> {
     await this.owned(id, actor.organizacionId);
     await this.db
