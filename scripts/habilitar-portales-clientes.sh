@@ -7,7 +7,11 @@
 # Todo queda en audit_log. No enciende el envío: eso es en
 # Configuración → Plantillas de Meta.
 #
-# Uso, desde cualquier carpeta:
+# En el VPS (Openship), dentro del contenedor api:
+#   docker exec -it <contenedor-api> /app/scripts/habilitar-portales-clientes.sh
+#   docker exec -it <contenedor-api> /app/scripts/habilitar-portales-clientes.sh --aplicar
+#
+# Local, desde cualquier carpeta:
 #   scripts/habilitar-portales-clientes.sh                      # en seco: solo reporta
 #   scripts/habilitar-portales-clientes.sh --aplicar            # escribe
 # Opciones:
@@ -25,6 +29,12 @@ cd "$RAIZ"
 if ! command -v bun >/dev/null 2>&1; then
   echo "❌ Falta bun (https://bun.sh)." >&2
   exit 1
+fi
+
+# Dentro del contenedor api (Openship) no hay DATABASE_URL: el entrypoint la
+# arma de POSTGRES_* al arrancar. Se arma igual aquí.
+if [ -z "${DATABASE_URL:-}" ] && [ -n "${POSTGRES_PASSWORD:-}" ]; then
+  export DATABASE_URL="postgresql://${POSTGRES_USER:-tostada}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-misupertostada}"
 fi
 
 exec bun apps/api/scripts/habilitar-portales.ts "$@"

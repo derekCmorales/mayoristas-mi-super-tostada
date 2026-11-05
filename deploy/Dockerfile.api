@@ -36,7 +36,9 @@ COPY --from=build /app/packages ./packages
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/bun.lock ./bun.lock
 COPY deploy/entrypoint-api.sh /app/deploy/entrypoint-api.sh
-RUN chmod +x /app/deploy/entrypoint-api.sh \
+# Mantenimiento a mano: `docker exec <api> /app/scripts/habilitar-portales-clientes.sh`.
+COPY scripts/habilitar-portales-clientes.sh /app/scripts/habilitar-portales-clientes.sh
+RUN chmod +x /app/deploy/entrypoint-api.sh /app/scripts/habilitar-portales-clientes.sh \
   && ARGON2_DIR="$(cd /app/apps/api && node -p "require('path').dirname(require.resolve('argon2/package.json'))")" \
   && (cd "$ARGON2_DIR" && npm run install)
 ENV NODE_ENV=production
